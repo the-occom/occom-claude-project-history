@@ -2,7 +2,7 @@
 /**
  * PGlite Compatibility Test — scripts/test-db.js
  *
- * Tests all SQL constructs used by FlowMind against a temporary PGlite instance.
+ * Tests all SQL constructs used by Claude Project History against a temporary PGlite instance.
  * Run: node scripts/test-db.js
  */
 

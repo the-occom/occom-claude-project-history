@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * FlowMind Install Script
+ * Claude Project History Install Script
  *
  * Run: npm run install-hooks
  *
  * What this does:
  *   1. Creates .claude/settings.json with hook config
  *   2. Installs post-commit git hook
- *   3. Prompts for workflow ID and creates .flowmind-workflow
+ *   3. Prompts for workflow ID and creates .cph-workflow
  *   4. Generates CLAUDE.md snippet
  */
 
@@ -35,7 +35,7 @@ function prompt(question) {
 }
 
 async function main() {
-  console.log("\n🧠 FlowMind Install\n");
+  console.log("\n🧠 Claude Project History Install\n");
 
   // ── 1. Claude Code hooks ───────────────────────────────────────────────────
   const claudeDir = join(CWD, ".claude");
@@ -92,7 +92,7 @@ async function main() {
   }
 
   // ── 3. Workflow ID ─────────────────────────────────────────────────────────
-  const workflowFile = join(CWD, ".flowmind-workflow");
+  const workflowFile = join(CWD, ".cph-workflow");
   let workflowId = "";
 
   if (existsSync(workflowFile)) {
@@ -111,41 +111,41 @@ async function main() {
       workflowId = id;
       console.log(`\n⚡ Workflow ID generated: ${id}`);
       console.log(`   Run this in Claude Code to register it:`);
-      console.log(`   flowmind_workflow_create with name="${name}" and note the ID matches ${id}`);
+      console.log(`   cph_workflow_create with name="${name}" and note the ID matches ${id}`);
       console.log(`   (Or just start Claude Code — session_init will guide you)`);
     } else {
       workflowId = await prompt("Paste workflow ID: ");
     }
 
     writeFileSync(workflowFile, workflowId);
-    console.log(`✓ Workflow ID saved to .flowmind-workflow`);
+    console.log(`✓ Workflow ID saved to .cph-workflow`);
   }
 
   // Add to .gitignore if not already there
   const gitignorePath = join(CWD, ".gitignore");
   if (existsSync(gitignorePath)) {
     const gitignore = readFileSync(gitignorePath, "utf8");
-    if (!gitignore.includes(".flowmind-workflow")) {
-      writeFileSync(gitignorePath, gitignore + "\n.flowmind-workflow\n");
-      console.log(`✓ Added .flowmind-workflow to .gitignore`);
+    if (!gitignore.includes(".cph-workflow")) {
+      writeFileSync(gitignorePath, gitignore + "\n.cph-workflow\n");
+      console.log(`✓ Added .cph-workflow to .gitignore`);
     }
   }
 
   // ── 4. CLAUDE.md snippet ───────────────────────────────────────────────────
   const snippet = `
-## FlowMind
+## Claude Project History
 Workflow ID: ${workflowId}
-Call flowmind_session_init at the start of every session. Track everything silently. Never ask for confirmation before recording tasks, blockers, or decisions. Never interrupt work to report what you're tracking.
+Call cph_session_init at the start of every session. Track everything silently. Never ask for confirmation before recording tasks, blockers, or decisions. Never interrupt work to report what you're tracking.
 `.trim();
 
   const claudeMdPath = join(CWD, "CLAUDE.md");
   if (existsSync(claudeMdPath)) {
     const existing = readFileSync(claudeMdPath, "utf8");
-    if (!existing.includes("FlowMind")) {
+    if (!existing.includes("Claude Project History")) {
       writeFileSync(claudeMdPath, existing + "\n\n" + snippet + "\n");
-      console.log(`✓ FlowMind section appended to CLAUDE.md`);
+      console.log(`✓ Claude Project History section appended to CLAUDE.md`);
     } else {
-      console.log(`✓ CLAUDE.md already has FlowMind section`);
+      console.log(`✓ CLAUDE.md already has Claude Project History section`);
     }
   } else {
     writeFileSync(claudeMdPath, snippet + "\n");
@@ -154,11 +154,11 @@ Call flowmind_session_init at the start of every session. Track everything silen
 
   // ── Done ───────────────────────────────────────────────────────────────────
   console.log(`
-✅ FlowMind installed.
+✅ Claude Project History installed.
 
-Next: Start Claude Code. It will call flowmind_session_init automatically.
+Next: Start Claude Code. It will call cph_session_init automatically.
 
-Your data lives at: ~/.flowmind/db
+Your data lives at: ~/.cph/db
 `);
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * FlowMind Full Test Suite — scripts/test-all.js
+ * Claude Project History Full Test Suite — scripts/test-all.js
  *
  * Tests all entity CRUD, state machine transitions, session init,
  * search, compression, and git context. Uses in-memory PGlite.
@@ -81,7 +81,7 @@ const MIGRATION = `
 `;
 
 async function main() {
-  console.log("FlowMind Full Test Suite\n");
+  console.log("Claude Project History Full Test Suite\n");
 
   const db = new PGlite();
   await db.exec(MIGRATION);

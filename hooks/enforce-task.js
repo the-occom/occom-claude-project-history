@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * FlowMind PreToolUse Hook — enforce-task.js
+ * Claude Project History PreToolUse Hook — enforce-task.js
  *
  * Fires before every Write, Edit, or MultiEdit tool call in Claude Code.
  * Reads stdin for the hook payload, checks PGlite for an active task,
@@ -19,8 +19,8 @@ import { join } from "path";
 import { homedir } from "os";
 import { readFileSync } from "fs";
 
-const DB_PATH = join(homedir(), ".flowmind", "db");
-const WORKFLOW_ID_FILE = join(process.cwd(), ".flowmind-workflow");
+const DB_PATH = join(homedir(), ".cph", "db");
+const WORKFLOW_ID_FILE = join(process.cwd(), ".cph-workflow");
 
 async function main() {
   // Read hook payload from stdin
@@ -39,7 +39,7 @@ async function main() {
     process.exit(0);
   }
 
-  // Resolve workflow ID — from .flowmind-workflow file or env
+  // Resolve workflow ID — from .cph-workflow file or env
   let workflowId: string | null = null;
   try {
     workflowId = readFileSync(WORKFLOW_ID_FILE, "utf8").trim();
@@ -68,7 +68,7 @@ async function main() {
     if (activeCount === 0) {
       // Block the write
       console.log(
-        "FlowMind: No active task. Call flowmind_task_create then flowmind_task_start before writing files."
+        "Claude Project History: No active task. Call cph_task_create then cph_task_start before writing files."
       );
       process.exit(2);
     }

@@ -8,7 +8,7 @@ import { registerBlockerTools } from "./tools/blockers.js";
 import { registerDecisionTools } from "./tools/decisions.js";
 import { getDb } from "./db.js";
 const server = new McpServer({
-    name: "flowmind-mcp-server",
+    name: "occom-claude-project-history",
     version: "0.1.0"
 });
 // Register all tools
@@ -23,10 +23,10 @@ async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
     // Log to stderr only — stdout is reserved for MCP protocol
-    console.error("[flowmind] MCP server running. DB at ~/.flowmind/db");
+    console.error("[cph] MCP server running. DB at ~/.cph/db");
 }
 main().catch((error) => {
-    console.error("[flowmind] Fatal error:", error);
+    console.error("[cph] Fatal error:", error);
     process.exit(1);
 });
 //# sourceMappingURL=index.js.map

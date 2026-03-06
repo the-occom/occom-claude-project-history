@@ -6,7 +6,7 @@ import type { Decision } from "../types.js";
 export function registerDecisionTools(server: McpServer): void {
 
   server.registerTool(
-    "flowmind_decision_record",
+    "cph_decision_record",
     {
       title: "Record Decision",
       description: `Record an architectural, design, or process decision.
@@ -66,7 +66,7 @@ Args:
   );
 
   server.registerTool(
-    "flowmind_decision_search",
+    "cph_decision_search",
     {
       title: "Search Decisions",
       description: `Search decisions by keyword across title, decision, context, and rationale.
@@ -75,7 +75,7 @@ CALL THIS before making any significant architectural choice to check if it was 
 This is the primary anti-repetition tool.
 
 Returns summary view (id + title + decision only) to preserve context budget.
-Use flowmind_decision_get for full details on a specific result.`,
+Use cph_decision_get for full details on a specific result.`,
       inputSchema: {
         query: z.string().min(2).max(200).describe("Keyword or phrase to search for"),
         workflow_id: z.string().uuid().optional().describe("Limit to specific workflow. Omit to search all."),
@@ -116,12 +116,12 @@ Use flowmind_decision_get for full details on a specific result.`,
   );
 
   server.registerTool(
-    "flowmind_decision_get",
+    "cph_decision_get",
     {
       title: "Get Decision",
       description: `Get full details of a single decision including rationale and alternatives.
 
-Use after flowmind_decision_search returns relevant IDs.`,
+Use after cph_decision_search returns relevant IDs.`,
       inputSchema: {
         decision_id: z.string().uuid()
       },
@@ -143,7 +143,7 @@ Use after flowmind_decision_search returns relevant IDs.`,
   );
 
   server.registerTool(
-    "flowmind_decision_list",
+    "cph_decision_list",
     {
       title: "List Decisions",
       description: `List decisions for a workflow. Returns summary view only.
@@ -184,7 +184,7 @@ Call this when user explicitly asks to see decisions. session_init surfaces rele
   );
 
   server.registerTool(
-    "flowmind_decision_attach_commit",
+    "cph_decision_attach_commit",
     {
       title: "Attach Commit to Recent Decisions",
       description: `Internal: Called by the post-commit git hook to link recent decisions to a commit.

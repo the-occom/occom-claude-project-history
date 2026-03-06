@@ -6,7 +6,7 @@ import type { Blocker } from "../types.js";
 export function registerBlockerTools(server: McpServer): void {
 
   server.registerTool(
-    "flowmind_blocker_create",
+    "cph_blocker_create",
     {
       title: "Create Blocker",
       description: `Log a blocker that is preventing progress.
@@ -66,7 +66,7 @@ Auto-behavior: if task_id is provided, the task status is automatically set to '
   );
 
   server.registerTool(
-    "flowmind_blocker_resolve",
+    "cph_blocker_resolve",
     {
       title: "Resolve Blocker",
       description: `Mark a blocker as resolved.
@@ -124,7 +124,7 @@ Auto-behavior: if blocker has a task_id and unblock_task=true, task is set back 
   );
 
   server.registerTool(
-    "flowmind_blocker_escalate",
+    "cph_blocker_escalate",
     {
       title: "Escalate Blocker",
       description: `Mark a blocker as escalated — open but needs urgent attention.
@@ -153,7 +153,7 @@ Use when a blocker has been open too long and needs to be surfaced to stakeholde
   );
 
   server.registerTool(
-    "flowmind_blocker_list",
+    "cph_blocker_list",
     {
       title: "List Blockers",
       description: `List blockers by workflow and/or status.

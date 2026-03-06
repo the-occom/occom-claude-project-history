@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * FlowMind Tier 1 QA — Raw MCP Protocol Test
+ * Claude Project History Tier 1 QA — Raw MCP Protocol Test
  *
  * Spawns dist/index.js via StdioClientTransport, connects a real MCP Client,
  * and exercises 10 happy-path steps + 2 negative tests through JSON-RPC.
@@ -16,7 +16,7 @@ import fs from "fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_PATH = resolve(__dirname, "..", "dist", "index.js");
-const DB_PATH = resolve(process.env.HOME, ".flowmind", "db");
+const DB_PATH = resolve(process.env.HOME, ".cph", "db");
 
 let passed = 0;
 let failed = 0;
@@ -50,7 +50,7 @@ async function callTool(client, toolName, args) {
 }
 
 async function main() {
-  console.log("FlowMind Tier 1 QA — Raw MCP Protocol Test\n");
+  console.log("Claude Project History Tier 1 QA — Raw MCP Protocol Test\n");
 
   // ── Clean slate ──────────────────────────────────────────────────────────
   if (fs.existsSync(DB_PATH)) {
@@ -65,12 +65,12 @@ async function main() {
   });
 
   const client = new Client({
-    name: "flowmind-qa",
+    name: "cph-qa",
     version: "1.0.0",
   });
 
   await client.connect(transport);
-  console.log("Connected to FlowMind MCP server");
+  console.log("Connected to Claude Project History MCP server");
 
   // ── Verify tool count ────────────────────────────────────────────────────
   step("Tool Discovery");
@@ -80,8 +80,8 @@ async function main() {
   assert(tools.length === 24, `Expected 24 tools, got ${tools.length}`);
 
   // ── Step 1: Create Workflow ──────────────────────────────────────────────
-  step("Step 1: flowmind_workflow_create");
-  const s1 = await callTool(client, "flowmind_workflow_create", {
+  step("Step 1: cph_workflow_create");
+  const s1 = await callTool(client, "cph_workflow_create", {
     name: "QA Test Workflow",
     description: "Automated MCP protocol test",
   });
@@ -92,8 +92,8 @@ async function main() {
   console.log(`  workflow_id = ${workflow_id}`);
 
   // ── Step 2: Create Task ──────────────────────────────────────────────────
-  step("Step 2: flowmind_task_create");
-  const s2 = await callTool(client, "flowmind_task_create", {
+  step("Step 2: cph_task_create");
+  const s2 = await callTool(client, "cph_task_create", {
     workflow_id,
     title: "Implement login",
     priority: "high",
@@ -107,15 +107,15 @@ async function main() {
   console.log(`  task_id = ${task_id}`);
 
   // ── Step 3: Start Task ───────────────────────────────────────────────────
-  step("Step 3: flowmind_task_start");
-  const s3 = await callTool(client, "flowmind_task_start", { task_id });
+  step("Step 3: cph_task_start");
+  const s3 = await callTool(client, "cph_task_start", { task_id });
   assert(!s3.isError, "No error");
   assert(s3.parsed?.status === "in_progress", `status === "in_progress"`);
   assert(s3.parsed?.started_at != null, "started_at not null");
 
   // ── Step 4: Record Decision ──────────────────────────────────────────────
-  step("Step 4: flowmind_decision_record");
-  const s4 = await callTool(client, "flowmind_decision_record", {
+  step("Step 4: cph_decision_record");
+  const s4 = await callTool(client, "cph_decision_record", {
     workflow_id,
     task_id,
     title: "Use bcrypt over argon2",
@@ -130,8 +130,8 @@ async function main() {
   console.log(`  decision_id = ${decision_id}`);
 
   // ── Step 5: Create Blocker ───────────────────────────────────────────────
-  step("Step 5: flowmind_blocker_create");
-  const s5 = await callTool(client, "flowmind_blocker_create", {
+  step("Step 5: cph_blocker_create");
+  const s5 = await callTool(client, "cph_blocker_create", {
     workflow_id,
     task_id,
     title: "Waiting for OAuth secrets",
@@ -143,12 +143,12 @@ async function main() {
   console.log(`  blocker_id = ${blocker_id}`);
 
   // Verify task auto-blocked
-  const taskAfterBlock = await callTool(client, "flowmind_task_get", { task_id });
+  const taskAfterBlock = await callTool(client, "cph_task_get", { task_id });
   assert(taskAfterBlock.parsed?.status === "blocked", "task auto-set to blocked");
 
   // ── Step 6: Resolve Blocker ──────────────────────────────────────────────
-  step("Step 6: flowmind_blocker_resolve");
-  const s6 = await callTool(client, "flowmind_blocker_resolve", {
+  step("Step 6: cph_blocker_resolve");
+  const s6 = await callTool(client, "cph_blocker_resolve", {
     blocker_id,
     resolution: "Secrets provided via 1Password",
   });
@@ -156,12 +156,12 @@ async function main() {
   assert(s6.parsed?.status === "resolved", `blocker status === "resolved"`);
 
   // Verify task auto-unblocked
-  const taskAfterUnblock = await callTool(client, "flowmind_task_get", { task_id });
+  const taskAfterUnblock = await callTool(client, "cph_task_get", { task_id });
   assert(taskAfterUnblock.parsed?.status === "in_progress", "task auto-set back to in_progress");
 
   // ── Step 7: Complete Task ────────────────────────────────────────────────
-  step("Step 7: flowmind_task_complete");
-  const s7 = await callTool(client, "flowmind_task_complete", {
+  step("Step 7: cph_task_complete");
+  const s7 = await callTool(client, "cph_task_complete", {
     task_id,
     actual_minutes: 45,
   });
@@ -170,8 +170,8 @@ async function main() {
   assert(s7.parsed?.actual_minutes === 45, `actual_minutes === 45`);
 
   // ── Step 8: Session Init ─────────────────────────────────────────────────
-  step("Step 8: flowmind_session_init");
-  const s8 = await callTool(client, "flowmind_session_init", {
+  step("Step 8: cph_session_init");
+  const s8 = await callTool(client, "cph_session_init", {
     workflow_id,
     depth: "standard",
   });
@@ -183,8 +183,8 @@ async function main() {
   assert(typeof s8.parsed?.session_hint === "string", "has session_hint");
 
   // ── Step 9: Decision Search ──────────────────────────────────────────────
-  step("Step 9: flowmind_decision_search");
-  const s9 = await callTool(client, "flowmind_decision_search", {
+  step("Step 9: cph_decision_search");
+  const s9 = await callTool(client, "cph_decision_search", {
     query: "bcrypt",
   });
   assert(!s9.isError, "No error");
@@ -196,8 +196,8 @@ async function main() {
   );
 
   // ── Step 10: Workflow Summary ────────────────────────────────────────────
-  step("Step 10: flowmind_workflow_summary");
-  const s10 = await callTool(client, "flowmind_workflow_summary", {
+  step("Step 10: cph_workflow_summary");
+  const s10 = await callTool(client, "cph_workflow_summary", {
     workflow_id,
   });
   assert(!s10.isError, "No error");
@@ -210,11 +210,11 @@ async function main() {
 
   // ── Negative Test 11: Complete a pending task ────────────────────────────
   step("Negative 11: task_complete on pending task");
-  const freshTask = await callTool(client, "flowmind_task_create", {
+  const freshTask = await callTool(client, "cph_task_create", {
     workflow_id,
     title: "Fresh pending task",
   });
-  const n11 = await callTool(client, "flowmind_task_complete", {
+  const n11 = await callTool(client, "cph_task_complete", {
     task_id: freshTask.parsed?.id,
     actual_minutes: 10,
   });
@@ -226,7 +226,7 @@ async function main() {
 
   // ── Negative Test 12: Start a completed task ─────────────────────────────
   step("Negative 12: task_start on completed task");
-  const n12 = await callTool(client, "flowmind_task_start", { task_id });
+  const n12 = await callTool(client, "cph_task_start", { task_id });
   assert(n12.isError === true, "isError is true");
   assert(
     typeof n12.text === "string" && n12.text.toLowerCase().includes("completed"),

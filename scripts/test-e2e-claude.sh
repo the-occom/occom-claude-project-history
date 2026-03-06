@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# FlowMind Tier 2 QA — Claude-Mediated E2E Test
+# Claude Project History Tier 2 QA — Claude-Mediated E2E Test
 #
 # Invokes `claude -p` with --mcp-config to test the full Claude-mediated path.
-# Each step issues a directive prompt forcing Claude to call a specific FlowMind tool.
+# Each step issues a directive prompt forcing Claude to call a specific Claude Project History tool.
 #
 # Run: bash scripts/test-e2e-claude.sh
 set -uo pipefail
@@ -14,15 +14,15 @@ CLAUDE_CMD=(env -u CLAUDECODE claude)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVER_PATH="$PROJECT_DIR/dist/index.js"
-DB_PATH="$HOME/.flowmind/db"
-MCP_CONFIG="/tmp/flowmind-qa-mcp.json"
+DB_PATH="$HOME/.cph/db"
+MCP_CONFIG="/tmp/cph-qa-mcp.json"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 REPORT="$PROJECT_DIR/qa-report-$TIMESTAMP.md"
 BUDGET="0.50"
 
 # Temp files
-TMP_JSON="/tmp/flowmind-qa-json.json"
-TMP_RAW="/tmp/flowmind-qa-raw.txt"
+TMP_JSON="/tmp/cph-qa-json.json"
+TMP_RAW="/tmp/cph-qa-raw.txt"
 
 passed=0
 failed=0
@@ -102,12 +102,12 @@ if [ ! -f "$SERVER_PATH" ]; then
   exit 1
 fi
 
-printf '{"mcpServers":{"flowmind":{"command":"node","args":["%s"]}}}' "$SERVER_PATH" > "$MCP_CONFIG"
+printf '{"mcpServers":{"cph":{"command":"node","args":["%s"]}}}' "$SERVER_PATH" > "$MCP_CONFIG"
 echo "  MCP config: $MCP_CONFIG"
 echo "  Report: $REPORT"
 
 {
-  echo "# FlowMind E2E QA Report"
+  echo "# Claude Project History E2E QA Report"
   echo ""
   echo "**Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
   echo "**Server:** $SERVER_PATH"
@@ -120,8 +120,8 @@ echo "  Report: $REPORT"
 
 # ── Step 1: Create Workflow ──────────────────────────────────────────────────
 
-log "Step 1: flowmind_workflow_create"
-call_claude 'Call the flowmind_workflow_create tool with name="QA Test Workflow" and description="E2E test". Return ONLY the raw JSON from the tool, nothing else.'
+log "Step 1: cph_workflow_create"
+call_claude 'Call the cph_workflow_create tool with name="QA Test Workflow" and description="E2E test". Return ONLY the raw JSON from the tool, nothing else.'
 
 if has_json; then
   check_field ".status" "active" "Step 1: status"
@@ -134,7 +134,7 @@ else
   WORKFLOW_ID=""
 fi
 
-report_line "### Step 1: flowmind_workflow_create - $([ -n "$WORKFLOW_ID" ] && echo 'OK' || echo 'FAIL')"
+report_line "### Step 1: cph_workflow_create - $([ -n "$WORKFLOW_ID" ] && echo 'OK' || echo 'FAIL')"
 report_line ""
 
 if [ -z "$WORKFLOW_ID" ]; then
@@ -145,8 +145,8 @@ fi
 
 # ── Step 2: Create Task ─────────────────────────────────────────────────────
 
-log "Step 2: flowmind_task_create"
-call_claude "Call the flowmind_task_create tool with workflow_id=\"$WORKFLOW_ID\", title=\"Implement login\", priority=\"high\", estimated_minutes=30. Return ONLY the raw JSON."
+log "Step 2: cph_task_create"
+call_claude "Call the cph_task_create tool with workflow_id=\"$WORKFLOW_ID\", title=\"Implement login\", priority=\"high\", estimated_minutes=30. Return ONLY the raw JSON."
 
 if has_json; then
   check_field ".status" "pending" "Step 2: status"
@@ -159,7 +159,7 @@ else
   TASK_ID=""
 fi
 
-report_line "### Step 2: flowmind_task_create - $([ -n "$TASK_ID" ] && echo 'OK' || echo 'FAIL')"
+report_line "### Step 2: cph_task_create - $([ -n "$TASK_ID" ] && echo 'OK' || echo 'FAIL')"
 report_line ""
 
 if [ -z "$TASK_ID" ]; then
@@ -169,8 +169,8 @@ fi
 
 # ── Step 3: Start Task ──────────────────────────────────────────────────────
 
-log "Step 3: flowmind_task_start"
-call_claude "Call the flowmind_task_start tool with task_id=\"$TASK_ID\". Return ONLY the raw JSON."
+log "Step 3: cph_task_start"
+call_claude "Call the cph_task_start tool with task_id=\"$TASK_ID\". Return ONLY the raw JSON."
 
 if has_json; then
   check_field ".status" "in_progress" "Step 3: status"
@@ -180,13 +180,13 @@ else
   failed=$((failed + 1))
 fi
 
-report_line "### Step 3: flowmind_task_start"
+report_line "### Step 3: cph_task_start"
 report_line ""
 
 # ── Step 4: Record Decision ─────────────────────────────────────────────────
 
-log "Step 4: flowmind_decision_record"
-call_claude "Call the flowmind_decision_record tool with workflow_id=\"$WORKFLOW_ID\", task_id=\"$TASK_ID\", title=\"Use bcrypt over argon2\", decision=\"Chose bcrypt for password hashing\", tags=\"auth,security\". Return ONLY the raw JSON."
+log "Step 4: cph_decision_record"
+call_claude "Call the cph_decision_record tool with workflow_id=\"$WORKFLOW_ID\", task_id=\"$TASK_ID\", title=\"Use bcrypt over argon2\", decision=\"Chose bcrypt for password hashing\", tags=\"auth,security\". Return ONLY the raw JSON."
 
 if has_json; then
   check_exists ".id" "Step 4: id exists"
@@ -198,13 +198,13 @@ else
   failed=$((failed + 1))
 fi
 
-report_line "### Step 4: flowmind_decision_record"
+report_line "### Step 4: cph_decision_record"
 report_line ""
 
 # ── Step 5: Create Blocker ──────────────────────────────────────────────────
 
-log "Step 5: flowmind_blocker_create"
-call_claude "Call the flowmind_blocker_create tool with workflow_id=\"$WORKFLOW_ID\", task_id=\"$TASK_ID\", title=\"Waiting for OAuth secrets\", blocker_type=\"waiting_on_human\". Return ONLY the raw JSON."
+log "Step 5: cph_blocker_create"
+call_claude "Call the cph_blocker_create tool with workflow_id=\"$WORKFLOW_ID\", task_id=\"$TASK_ID\", title=\"Waiting for OAuth secrets\", blocker_type=\"waiting_on_human\". Return ONLY the raw JSON."
 
 if has_json; then
   check_field ".status" "open" "Step 5: blocker status"
@@ -216,12 +216,12 @@ else
   BLOCKER_ID=""
 fi
 
-report_line "### Step 5: flowmind_blocker_create"
+report_line "### Step 5: cph_blocker_create"
 report_line ""
 
 # Verify task was auto-blocked
 echo "  Verifying task auto-blocked..."
-call_claude "Call the flowmind_task_get tool with task_id=\"$TASK_ID\". Return ONLY the raw JSON."
+call_claude "Call the cph_task_get tool with task_id=\"$TASK_ID\". Return ONLY the raw JSON."
 if has_json; then
   check_field ".status" "blocked" "Step 5b: task auto-blocked"
 fi
@@ -233,8 +233,8 @@ fi
 
 # ── Step 6: Resolve Blocker ─────────────────────────────────────────────────
 
-log "Step 6: flowmind_blocker_resolve"
-call_claude "Call the flowmind_blocker_resolve tool with blocker_id=\"$BLOCKER_ID\", resolution=\"Secrets provided via 1Password\". Return ONLY the raw JSON."
+log "Step 6: cph_blocker_resolve"
+call_claude "Call the cph_blocker_resolve tool with blocker_id=\"$BLOCKER_ID\", resolution=\"Secrets provided via 1Password\". Return ONLY the raw JSON."
 
 if has_json; then
   check_field ".status" "resolved" "Step 6: blocker resolved"
@@ -245,18 +245,18 @@ fi
 
 # Verify task auto-unblocked
 echo "  Verifying task auto-unblocked..."
-call_claude "Call the flowmind_task_get tool with task_id=\"$TASK_ID\". Return ONLY the raw JSON."
+call_claude "Call the cph_task_get tool with task_id=\"$TASK_ID\". Return ONLY the raw JSON."
 if has_json; then
   check_field ".status" "in_progress" "Step 6b: task auto-unblocked"
 fi
 
-report_line "### Step 6: flowmind_blocker_resolve"
+report_line "### Step 6: cph_blocker_resolve"
 report_line ""
 
 # ── Step 7: Complete Task ───────────────────────────────────────────────────
 
-log "Step 7: flowmind_task_complete"
-call_claude "Call the flowmind_task_complete tool with task_id=\"$TASK_ID\", actual_minutes=45. Return ONLY the raw JSON."
+log "Step 7: cph_task_complete"
+call_claude "Call the cph_task_complete tool with task_id=\"$TASK_ID\", actual_minutes=45. Return ONLY the raw JSON."
 
 if has_json; then
   check_field ".status" "completed" "Step 7: status"
@@ -266,13 +266,13 @@ else
   failed=$((failed + 1))
 fi
 
-report_line "### Step 7: flowmind_task_complete"
+report_line "### Step 7: cph_task_complete"
 report_line ""
 
 # ── Step 8: Session Init ────────────────────────────────────────────────────
 
-log "Step 8: flowmind_session_init"
-call_claude "Call the flowmind_session_init tool with workflow_id=\"$WORKFLOW_ID\", depth=\"standard\". Return ONLY the raw JSON."
+log "Step 8: cph_session_init"
+call_claude "Call the cph_session_init tool with workflow_id=\"$WORKFLOW_ID\", depth=\"standard\". Return ONLY the raw JSON."
 
 if has_json; then
   check_exists ".workflow" "Step 8: has workflow"
@@ -282,13 +282,13 @@ else
   failed=$((failed + 1))
 fi
 
-report_line "### Step 8: flowmind_session_init"
+report_line "### Step 8: cph_session_init"
 report_line ""
 
 # ── Step 9: Decision Search ─────────────────────────────────────────────────
 
-log "Step 9: flowmind_decision_search"
-call_claude "Call the flowmind_decision_search tool with query=\"bcrypt\". Return ONLY the raw JSON."
+log "Step 9: cph_decision_search"
+call_claude "Call the cph_decision_search tool with query=\"bcrypt\". Return ONLY the raw JSON."
 
 if has_json; then
   step9_title=$(json_field '.[0].title // empty')
@@ -304,13 +304,13 @@ else
   failed=$((failed + 1))
 fi
 
-report_line "### Step 9: flowmind_decision_search"
+report_line "### Step 9: cph_decision_search"
 report_line ""
 
 # ── Step 10: Workflow Summary ────────────────────────────────────────────────
 
-log "Step 10: flowmind_workflow_summary"
-call_claude "Call the flowmind_workflow_summary tool with workflow_id=\"$WORKFLOW_ID\". Return ONLY the raw JSON."
+log "Step 10: cph_workflow_summary"
+call_claude "Call the cph_workflow_summary tool with workflow_id=\"$WORKFLOW_ID\". Return ONLY the raw JSON."
 
 if has_json; then
   check_field ".task_counts.completed" "1" "Step 10: completed tasks"
@@ -320,17 +320,17 @@ else
   failed=$((failed + 1))
 fi
 
-report_line "### Step 10: flowmind_workflow_summary"
+report_line "### Step 10: cph_workflow_summary"
 report_line ""
 
 # ── Negative Test 11: Complete pending task ──────────────────────────────────
 
 log "Negative 11: task_complete on pending task"
-call_claude "Call the flowmind_task_create tool with workflow_id=\"$WORKFLOW_ID\", title=\"Fresh pending task\". Return ONLY the raw JSON."
+call_claude "Call the cph_task_create tool with workflow_id=\"$WORKFLOW_ID\", title=\"Fresh pending task\". Return ONLY the raw JSON."
 NEG_TASK_ID=$(json_field '.id')
 
 if [ -n "$NEG_TASK_ID" ] && [ "$NEG_TASK_ID" != "null" ]; then
-  call_claude "Call the flowmind_task_complete tool with task_id=\"$NEG_TASK_ID\", actual_minutes=10. Return ONLY the raw output including any errors."
+  call_claude "Call the cph_task_complete tool with task_id=\"$NEG_TASK_ID\", actual_minutes=10. Return ONLY the raw output including any errors."
   if grep -qi "task_start" "$TMP_RAW" 2>/dev/null; then
     echo "  PASS: Neg 11: mentions task_start"
     passed=$((passed + 1))
@@ -349,7 +349,7 @@ report_line ""
 # ── Negative Test 12: Start completed task ───────────────────────────────────
 
 log "Negative 12: task_start on completed task"
-call_claude "Call the flowmind_task_start tool with task_id=\"$TASK_ID\". Return ONLY the raw output including any errors."
+call_claude "Call the cph_task_start tool with task_id=\"$TASK_ID\". Return ONLY the raw output including any errors."
 if grep -qi "completed" "$TMP_RAW" 2>/dev/null; then
   echo "  PASS: Neg 12: mentions completed"
   passed=$((passed + 1))

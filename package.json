@@ -1,16 +1,16 @@
 {
-  "name": "flowmind-mcp-server",
+  "name": "occom-claude-project-history",
   "version": "0.1.0",
   "description": "Invisible project intelligence for Claude Code. Tracks workflows, tasks, blockers, and decisions locally with PGlite.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/the-occom/flowmind-mcp-server.git"
+    "url": "https://github.com/the-occom/occom-claude-project-history.git"
   },
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "flowmind": "dist/index.js"
+    "cph": "dist/index.js"
   },
   "files": [
     "dist",

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getDb, newId, findOne, PRIORITY_ORDER } from "../db.js";
 export function registerTaskTools(server) {
-    server.registerTool("flowmind_task_create", {
+    server.registerTool("cph_task_create", {
         title: "Create Task",
         description: `Create a task within a workflow.
 
@@ -18,7 +18,7 @@ Args:
     Skipping this excludes the task from estimation accuracy analysis.
     Guess if unsure — a bad estimate is more useful than no estimate.
 
-Returns: Created task. Call flowmind_task_start immediately after.`,
+Returns: Created task. Call cph_task_start immediately after.`,
         inputSchema: {
             workflow_id: z.string().uuid(),
             title: z.string().min(1).max(500),
@@ -44,7 +44,7 @@ Returns: Created task. Call flowmind_task_start immediately after.`,
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
     });
-    server.registerTool("flowmind_task_start", {
+    server.registerTool("cph_task_start", {
         title: "Start Task",
         description: `Mark a task as in_progress and record start time.
 
@@ -80,7 +80,7 @@ State machine: pending → in_progress (only valid transition from this tool)`,
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
     });
-    server.registerTool("flowmind_task_complete", {
+    server.registerTool("cph_task_complete", {
         title: "Complete Task",
         description: `Mark a task as completed.
 
@@ -111,7 +111,7 @@ Args:
                 return {
                     content: [{
                             type: "text",
-                            text: `Error: Task is '${task.status}'. Call flowmind_task_start first.`
+                            text: `Error: Task is '${task.status}'. Call cph_task_start first.`
                         }],
                     isError: true
                 };
@@ -141,11 +141,11 @@ Args:
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
     });
-    server.registerTool("flowmind_task_list", {
+    server.registerTool("cph_task_list", {
         title: "List Tasks",
         description: `List tasks filtered by workflow and/or status.
 
-Returns ID and title only for efficiency. Use flowmind_task_get for full details on a specific task.
+Returns ID and title only for efficiency. Use cph_task_get for full details on a specific task.
 
 Call this only when explicitly asked — session_init already provides active tasks.`,
         inputSchema: {
@@ -198,7 +198,7 @@ Call this only when explicitly asked — session_init already provides active ta
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
     });
-    server.registerTool("flowmind_task_get", {
+    server.registerTool("cph_task_get", {
         title: "Get Task",
         description: `Get full details of a single task including subtasks and open blockers.`,
         inputSchema: {
@@ -228,7 +228,7 @@ Call this only when explicitly asked — session_init already provides active ta
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
     });
-    server.registerTool("flowmind_task_update", {
+    server.registerTool("cph_task_update", {
         title: "Update Task",
         description: `Update task fields. For starting/completing, prefer task_start and task_complete.`,
         inputSchema: {
@@ -274,7 +274,7 @@ Call this only when explicitly asked — session_init already provides active ta
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
     });
-    server.registerTool("flowmind_task_cancel", {
+    server.registerTool("cph_task_cancel", {
         title: "Cancel Task",
         description: `Cancel a task that is no longer needed.
 

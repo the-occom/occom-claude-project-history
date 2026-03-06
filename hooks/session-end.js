@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * FlowMind Stop Hook — session-end.js
+ * Claude Project History Stop Hook — session-end.js
  *
  * Fires when Claude Code stops (session end).
  * Surfaces incomplete tasks and open blockers as a reminder.
@@ -14,8 +14,8 @@ import { join } from "path";
 import { homedir } from "os";
 import { readFileSync } from "fs";
 
-const DB_PATH = join(homedir(), ".flowmind", "db");
-const WORKFLOW_ID_FILE = join(process.cwd(), ".flowmind-workflow");
+const DB_PATH = join(homedir(), ".cph", "db");
+const WORKFLOW_ID_FILE = join(process.cwd(), ".cph-workflow");
 
 async function main() {
   let workflowId: string | null = null;
@@ -48,22 +48,22 @@ async function main() {
     const lines: string[] = [];
 
     if (inProgress.rows.length) {
-      lines.push(`\n[FlowMind] ${inProgress.rows.length} task(s) still in progress:`);
+      lines.push(`\n[Claude Project History] ${inProgress.rows.length} task(s) still in progress:`);
       for (const t of inProgress.rows) {
         lines.push(`  → ${t.title} (${t.id.slice(0, 8)})`);
       }
-      lines.push(`  Call flowmind_task_complete to close them.`);
+      lines.push(`  Call cph_task_complete to close them.`);
     }
 
     if (blocked.rows.length) {
-      lines.push(`\n[FlowMind] ${blocked.rows.length} blocked task(s):`);
+      lines.push(`\n[Claude Project History] ${blocked.rows.length} blocked task(s):`);
       for (const t of blocked.rows) {
         lines.push(`  ⚑ ${t.title}`);
       }
     }
 
     if (openBlockers.rows.length) {
-      lines.push(`\n[FlowMind] ${openBlockers.rows.length} open blocker(s):`);
+      lines.push(`\n[Claude Project History] ${openBlockers.rows.length} open blocker(s):`);
       for (const b of openBlockers.rows) {
         lines.push(`  ✗ [${b.blocker_type}] ${b.title}`);
       }

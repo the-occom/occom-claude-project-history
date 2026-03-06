@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { join } from "path";
 import { homedir } from "os";
 import { mkdirSync } from "fs";
-const DB_DIR = join(homedir(), ".flowmind");
+const DB_DIR = join(homedir(), ".cph");
 const DB_PATH = join(DB_DIR, "db");
 let _db = null;
 export async function getDb() {

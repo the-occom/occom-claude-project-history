@@ -1,8 +1,8 @@
-# FlowMind MCP Server
+# Claude Project History MCP Server
 
 Invisible project intelligence for Claude Code. Tracks workflows, tasks, blockers, and decisions locally. Zero Docker. Zero cloud. Just works.
 
-Data lives in PGlite (Postgres WASM) at `~/.flowmind/db`.
+Data lives in PGlite (Postgres WASM) at `~/.cph/db`.
 
 ---
 
@@ -10,7 +10,7 @@ Data lives in PGlite (Postgres WASM) at `~/.flowmind/db`.
 
 ```bash
 git clone <repo>
-cd flowmind-mcp-server
+cd occom-claude-project-history
 npm install
 npm run build
 npm run install-hooks   # wires Claude Code hooks + git hook + CLAUDE.md
@@ -23,9 +23,9 @@ Add to `~/.claude.json` or project `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "flowmind": {
+    "cph": {
       "command": "node",
-      "args": ["/absolute/path/to/flowmind-mcp-server/dist/index.js"]
+      "args": ["/absolute/path/to/occom-claude-project-history/dist/index.js"]
     }
   }
 }
@@ -37,7 +37,7 @@ Add to `~/.claude.json` or project `.mcp.json`:
 
 **You do nothing.** Claude Code does everything.
 
-At session start, Claude Code calls `flowmind_session_init` automatically (via CLAUDE.md).
+At session start, Claude Code calls `cph_session_init` automatically (via CLAUDE.md).
 It gets back a minimal context — active tasks, open blockers, relevant decisions — under 600 tokens.
 Then it works. Tasks, blockers, and decisions are recorded silently as side effects.
 
@@ -53,45 +53,45 @@ The hook system enforces this:
 ### Session (call these)
 | Tool | When |
 |------|------|
-| `flowmind_session_init` | Start of every session — auto via CLAUDE.md |
-| `flowmind_detect_workflow` | When on a new branch with no workflow yet |
-| `flowmind_set_depth` | Once, to set your preferred context depth |
-| `flowmind_status` | To verify the plugin is working |
+| `cph_session_init` | Start of every session — auto via CLAUDE.md |
+| `cph_detect_workflow` | When on a new branch with no workflow yet |
+| `cph_set_depth` | Once, to set your preferred context depth |
+| `cph_status` | To verify the plugin is working |
 
 ### Workflows
 | Tool | Description |
 |------|-------------|
-| `flowmind_workflow_create` | Create workflow — do this once per project/branch |
-| `flowmind_workflow_list` | List all workflows |
-| `flowmind_workflow_summary` | Task counts, blocker count, estimation accuracy |
-| `flowmind_workflow_update` | Update name, status, branch pattern |
+| `cph_workflow_create` | Create workflow — do this once per project/branch |
+| `cph_workflow_list` | List all workflows |
+| `cph_workflow_summary` | Task counts, blocker count, estimation accuracy |
+| `cph_workflow_update` | Update name, status, branch pattern |
 
 ### Tasks
 | Tool | When |
 |------|------|
-| `flowmind_task_create` | Before starting any discrete piece of work |
-| `flowmind_task_start` | Immediately after create — sets status + start time |
-| `flowmind_task_complete` | When done — provide actual_minutes |
-| `flowmind_task_get` | Full details including subtasks + blockers |
-| `flowmind_task_list` | List tasks (paginated, summaries only) |
-| `flowmind_task_update` | Update title/description/priority |
+| `cph_task_create` | Before starting any discrete piece of work |
+| `cph_task_start` | Immediately after create — sets status + start time |
+| `cph_task_complete` | When done — provide actual_minutes |
+| `cph_task_get` | Full details including subtasks + blockers |
+| `cph_task_list` | List tasks (paginated, summaries only) |
+| `cph_task_update` | Update title/description/priority |
 
 ### Blockers
 | Tool | When |
 |------|------|
-| `flowmind_blocker_create` | **Immediately** when blocked — before asking for help |
-| `flowmind_blocker_resolve` | When unblocked — always provide resolution text |
-| `flowmind_blocker_escalate` | When blocker needs urgent human attention |
-| `flowmind_blocker_list` | List open/resolved blockers |
+| `cph_blocker_create` | **Immediately** when blocked — before asking for help |
+| `cph_blocker_resolve` | When unblocked — always provide resolution text |
+| `cph_blocker_escalate` | When blocker needs urgent human attention |
+| `cph_blocker_list` | List open/resolved blockers |
 
 ### Decisions
 | Tool | When |
 |------|------|
-| `flowmind_decision_record` | When choosing between approaches |
-| `flowmind_decision_search` | **Before** any architectural choice |
-| `flowmind_decision_get` | Full details on a specific decision |
-| `flowmind_decision_list` | List decisions (summaries only) |
-| `flowmind_decision_attach_commit` | Called by git hook automatically |
+| `cph_decision_record` | When choosing between approaches |
+| `cph_decision_search` | **Before** any architectural choice |
+| `cph_decision_get` | Full details on a specific decision |
+| `cph_decision_list` | List decisions (summaries only) |
+| `cph_decision_attach_commit` | Called by git hook automatically |
 
 ---
 
@@ -107,7 +107,7 @@ deep     = + teammate activity (~1200 tokens)
 
 ```
 # In Claude Code:
-flowmind_set_depth with depth="minimal"
+cph_set_depth with depth="minimal"
 ```
 
 ---
@@ -118,8 +118,8 @@ flowmind_set_depth with depth="minimal"
 This is intentional — prevents context flood on large projects.
 
 Pattern for using decisions:
-1. `flowmind_decision_search` with keyword → get IDs
-2. `flowmind_decision_get` with specific ID → get full record
+1. `cph_decision_search` with keyword → get IDs
+2. `cph_decision_get` with specific ID → get full record
 
 Never load all decisions. Pull what you need.
 
@@ -128,8 +128,8 @@ Never load all decisions. Pull what you need.
 ## Data
 
 ```
-~/.flowmind/db/    ← PGlite database
-.flowmind-workflow ← current project's workflow ID (gitignored)
+~/.cph/db/    ← PGlite database
+.cph-workflow ← current project's workflow ID (gitignored)
 ```
 
 **Compression runs automatically** at session end:

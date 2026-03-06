@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getDb, newId, findOne } from "../db.js";
 export function registerBlockerTools(server) {
-    server.registerTool("flowmind_blocker_create", {
+    server.registerTool("cph_blocker_create", {
         title: "Create Blocker",
         description: `Log a blocker that is preventing progress.
 
@@ -48,7 +48,7 @@ Auto-behavior: if task_id is provided, the task status is automatically set to '
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
     });
-    server.registerTool("flowmind_blocker_resolve", {
+    server.registerTool("cph_blocker_resolve", {
         title: "Resolve Blocker",
         description: `Mark a blocker as resolved.
 
@@ -92,7 +92,7 @@ Auto-behavior: if blocker has a task_id and unblock_task=true, task is set back 
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
     });
-    server.registerTool("flowmind_blocker_escalate", {
+    server.registerTool("cph_blocker_escalate", {
         title: "Escalate Blocker",
         description: `Mark a blocker as escalated — open but needs urgent attention.
 
@@ -114,7 +114,7 @@ Use when a blocker has been open too long and needs to be surfaced to stakeholde
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
     });
-    server.registerTool("flowmind_blocker_list", {
+    server.registerTool("cph_blocker_list", {
         title: "List Blockers",
         description: `List blockers by workflow and/or status.
 

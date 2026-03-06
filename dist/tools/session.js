@@ -5,8 +5,8 @@ import { buildSessionContext } from "../services/retrieval.js";
 import { runCompression, getStorageSummary } from "../services/compressor.js";
 export function registerSessionTools(server) {
     // ── SESSION INIT ─────────────────────────────────────────────────────────────
-    server.registerTool("flowmind_session_init", {
-        title: "Initialize FlowMind Session",
+    server.registerTool("cph_session_init", {
+        title: "Initialize Claude Project History Session",
         description: `CALL THIS FIRST at the start of every Claude Code session.
 
 Returns the minimum context needed to orient yourself: active tasks, open blockers,
@@ -57,7 +57,7 @@ unless the user explicitly asks. Pull individual records on demand with their ID
         }
     });
     // ── AUTO DETECT WORKFLOW ─────────────────────────────────────────────────────
-    server.registerTool("flowmind_detect_workflow", {
+    server.registerTool("cph_detect_workflow", {
         title: "Detect Workflow from Git Context",
         description: `Detect which workflow matches the current git branch.
 
@@ -103,7 +103,7 @@ Returns either a matched workflow or a suggestion to create one.`,
                             suggestion: {
                                 name: suggestedName,
                                 git_branch_pattern: `${gitContext.branch.split("/")[0]}/*`,
-                                action: "Call flowmind_workflow_create with this name to start tracking"
+                                action: "Call cph_workflow_create with this name to start tracking"
                             }
                         }, null, 2)
                     }]
@@ -115,7 +115,7 @@ Returns either a matched workflow or a suggestion to create one.`,
         }
     });
     // ── SET PREFERENCE ───────────────────────────────────────────────────────────
-    server.registerTool("flowmind_set_depth", {
+    server.registerTool("cph_set_depth", {
         title: "Set Retrieval Depth Preference",
         description: `Set your personal retrieval depth preference for session init.
 
@@ -154,12 +154,12 @@ deep     = + teammate activity + historical patterns (use when debugging complex
         }
     });
     // ── STATUS ───────────────────────────────────────────────────────────────────
-    server.registerTool("flowmind_status", {
-        title: "FlowMind Status",
-        description: `Get overall FlowMind status: storage summary and active workflow count.
+    server.registerTool("cph_status", {
+        title: "Claude Project History Status",
+        description: `Get overall Claude Project History status: storage summary and active workflow count.
 
 Use this to check that the plugin is working, not to get project context.
-For project context, use flowmind_session_init.`,
+For project context, use cph_session_init.`,
         inputSchema: {},
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     }, async () => {
@@ -174,7 +174,7 @@ For project context, use flowmind_session_init.`,
                             status: "ok",
                             storage,
                             active_workflows: parseInt(activeWfs.rows[0]?.count ?? "0"),
-                            db_location: `~/.flowmind/db`
+                            db_location: `~/.cph/db`
                         }, null, 2)
                     }]
             };

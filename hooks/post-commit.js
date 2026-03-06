@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * FlowMind Post-Commit Git Hook — post-commit.js
+ * Claude Project History Post-Commit Git Hook — post-commit.js
  *
  * Fires after every git commit.
  * Attaches the commit hash and diff stat (structural only, no content)
@@ -19,8 +19,8 @@ import { join } from "path";
 import { homedir } from "os";
 import { readFileSync } from "fs";
 
-const DB_PATH = join(homedir(), ".flowmind", "db");
-const WORKFLOW_ID_FILE = join(process.cwd(), ".flowmind-workflow");
+const DB_PATH = join(homedir(), ".cph", "db");
+const WORKFLOW_ID_FILE = join(process.cwd(), ".cph-workflow");
 
 function safeExec(cmd) {
   try {
@@ -71,7 +71,7 @@ async function main() {
     if (count > 0) {
       // Silent success — don't clutter commit output
       // Uncomment to debug:
-      // console.error(`[flowmind] Linked ${count} decision(s) to commit ${commitHash}`);
+      // console.error(`[cph] Linked ${count} decision(s) to commit ${commitHash}`);
     }
   } catch {
     // Never block a commit

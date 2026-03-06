@@ -20,7 +20,7 @@ export async function runCompression(db) {
         compressBlockers(db),
     ]);
     if (decisions + tasks + blockers > 0) {
-        console.error(`[flowmind] Compressed ${decisions} decisions, ${tasks} tasks, ${blockers} blockers`);
+        console.error(`[cph] Compressed ${decisions} decisions, ${tasks} tasks, ${blockers} blockers`);
     }
     return { decisions, tasks, blockers };
 }

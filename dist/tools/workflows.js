@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getDb, newId, findOne } from "../db.js";
 export function registerWorkflowTools(server) {
-    server.registerTool("flowmind_workflow_create", {
+    server.registerTool("cph_workflow_create", {
         title: "Create Workflow",
         description: `Create a new workflow (project container for tasks, blockers, decisions).
 
@@ -11,7 +11,7 @@ Args:
   - name: Short name (e.g. "OAuth Migration", "API v2", "Payments Refactor")
   - description: Goals and scope (optional)
   - git_branch_pattern: Branch pattern for auto-detection (e.g. "feature/auth-*", "fix/*")
-    Set this so flowmind_detect_workflow automatically finds this workflow on matching branches.
+    Set this so cph_detect_workflow automatically finds this workflow on matching branches.
 
 Returns: Created workflow with ID. PUT THIS ID IN YOUR CLAUDE.md.`,
         inputSchema: {
@@ -43,11 +43,11 @@ Returns: Created workflow with ID. PUT THIS ID IN YOUR CLAUDE.md.`,
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
     });
-    server.registerTool("flowmind_workflow_list", {
+    server.registerTool("cph_workflow_list", {
         title: "List Workflows",
         description: `List workflows filtered by status.
 
-Returns: Array of workflows with ID, name, status. No task counts (use flowmind_workflow_summary for that).`,
+Returns: Array of workflows with ID, name, status. No task counts (use cph_workflow_summary for that).`,
         inputSchema: {
             status: z.enum(["active", "paused", "completed", "archived"]).optional()
         },
@@ -65,7 +65,7 @@ Returns: Array of workflows with ID, name, status. No task counts (use flowmind_
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
     });
-    server.registerTool("flowmind_workflow_summary", {
+    server.registerTool("cph_workflow_summary", {
         title: "Get Workflow Summary",
         description: `Get a full status summary of a workflow.
 
@@ -118,7 +118,7 @@ Use this when a user explicitly asks for project status. Don't call proactively.
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
     });
-    server.registerTool("flowmind_workflow_update", {
+    server.registerTool("cph_workflow_update", {
         title: "Update Workflow",
         description: `Update a workflow's name, description, status, or git branch pattern.`,
         inputSchema: {

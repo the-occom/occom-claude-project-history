@@ -6,7 +6,7 @@ import type { Task } from "../types.js";
 export function registerTaskTools(server: McpServer): void {
 
   server.registerTool(
-    "flowmind_task_create",
+    "cph_task_create",
     {
       title: "Create Task",
       description: `Create a task within a workflow.
@@ -24,7 +24,7 @@ Args:
     Skipping this excludes the task from estimation accuracy analysis.
     Guess if unsure — a bad estimate is more useful than no estimate.
 
-Returns: Created task. Call flowmind_task_start immediately after.`,
+Returns: Created task. Call cph_task_start immediately after.`,
       inputSchema: {
         workflow_id: z.string().uuid(),
         title: z.string().min(1).max(500),
@@ -56,7 +56,7 @@ Returns: Created task. Call flowmind_task_start immediately after.`,
   );
 
   server.registerTool(
-    "flowmind_task_start",
+    "cph_task_start",
     {
       title: "Start Task",
       description: `Mark a task as in_progress and record start time.
@@ -101,7 +101,7 @@ State machine: pending → in_progress (only valid transition from this tool)`,
   );
 
   server.registerTool(
-    "flowmind_task_complete",
+    "cph_task_complete",
     {
       title: "Complete Task",
       description: `Mark a task as completed.
@@ -135,7 +135,7 @@ Args:
           return {
             content: [{
               type: "text",
-              text: `Error: Task is '${task.status}'. Call flowmind_task_start first.`
+              text: `Error: Task is '${task.status}'. Call cph_task_start first.`
             }],
             isError: true
           };
@@ -164,12 +164,12 @@ Args:
   );
 
   server.registerTool(
-    "flowmind_task_list",
+    "cph_task_list",
     {
       title: "List Tasks",
       description: `List tasks filtered by workflow and/or status.
 
-Returns ID and title only for efficiency. Use flowmind_task_get for full details on a specific task.
+Returns ID and title only for efficiency. Use cph_task_get for full details on a specific task.
 
 Call this only when explicitly asked — session_init already provides active tasks.`,
       inputSchema: {
@@ -228,7 +228,7 @@ Call this only when explicitly asked — session_init already provides active ta
   );
 
   server.registerTool(
-    "flowmind_task_get",
+    "cph_task_get",
     {
       title: "Get Task",
       description: `Get full details of a single task including subtasks and open blockers.`,
@@ -270,7 +270,7 @@ Call this only when explicitly asked — session_init already provides active ta
   );
 
   server.registerTool(
-    "flowmind_task_update",
+    "cph_task_update",
     {
       title: "Update Task",
       description: `Update task fields. For starting/completing, prefer task_start and task_complete.`,
@@ -311,7 +311,7 @@ Call this only when explicitly asked — session_init already provides active ta
   );
 
   server.registerTool(
-    "flowmind_task_cancel",
+    "cph_task_cancel",
     {
       title: "Cancel Task",
       description: `Cancel a task that is no longer needed.

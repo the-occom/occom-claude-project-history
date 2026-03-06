@@ -1,4 +1,4 @@
 node_modules/
-.flowmind-workflow
+.cph-workflow
 qa-report-*.md
 /tmp/
