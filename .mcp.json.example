@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "flowmind": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/flowmind-mcp-server/dist/index.js"],
+      "env": {}
+    }
+  }
+}

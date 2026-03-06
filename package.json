@@ -1,0 +1,41 @@
+{
+  "name": "flowmind-mcp-server",
+  "version": "0.1.0",
+  "description": "Invisible project intelligence for Claude Code. Tracks workflows, tasks, blockers, and decisions locally with PGlite.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/the-occom/flowmind-mcp-server.git"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "flowmind": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "hooks",
+    "scripts",
+    "CLAUDE.md.template",
+    ".mcp.json.example",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "install-hooks": "node scripts/install.js",
+    "test:mcp": "node scripts/test-mcp-raw.mjs",
+    "test:e2e": "bash scripts/test-e2e-claude.sh"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}

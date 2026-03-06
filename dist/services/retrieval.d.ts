@@ -1,0 +1,16 @@
+import type { PGlite } from "@electric-sql/pglite";
+import type { SessionContext, RetrievalDepth } from "../types.js";
+import type { GitContext } from "../types.js";
+/**
+ * Build the session context for a given workflow and engineer.
+ *
+ * Token budget by depth:
+ *   minimal  → ~300 tokens  (active tasks + open blockers only)
+ *   standard → ~600 tokens  (+ recent relevant decisions)
+ *   deep     → ~1200 tokens (+ teammate activity + historical patterns)
+ *
+ * Never returns full record content — summaries only.
+ * Full records are pull-on-demand via individual get tools.
+ */
+export declare function buildSessionContext(db: PGlite, workflowId: string, depth: RetrievalDepth, gitContext: GitContext, engineerId: string | null): Promise<SessionContext>;
+//# sourceMappingURL=retrieval.d.ts.map

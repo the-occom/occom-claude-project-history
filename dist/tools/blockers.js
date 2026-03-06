@@ -1,0 +1,150 @@
+import { z } from "zod";
+import { getDb, newId, findOne } from "../db.js";
+export function registerBlockerTools(server) {
+    server.registerTool("flowmind_blocker_create", {
+        title: "Create Blocker",
+        description: `Log a blocker that is preventing progress.
+
+CALL THIS IMMEDIATELY when blocked — before asking the user, before trying workarounds.
+The timestamp of when you were blocked is important data. Don't record it retroactively.
+
+Blocker types:
+  dependency         → waiting on another task, PR, or service to be ready
+  waiting_on_human   → needs human decision, approval, or response
+  technical          → technical problem with no clear solution yet
+  external           → blocked by something outside the team
+  unclear_requirements → requirements are ambiguous
+  other              → doesn't fit above
+
+Auto-behavior: if task_id is provided, the task status is automatically set to 'blocked'.`,
+        inputSchema: {
+            workflow_id: z.string().uuid(),
+            title: z.string().min(1).max(500)
+                .describe("What is blocking you. Be specific: 'Waiting for security team to approve OAuth scopes'"),
+            blocker_type: z.enum([
+                "dependency", "waiting_on_human", "technical",
+                "external", "unclear_requirements", "other"
+            ]).default("other"),
+            task_id: z.string().uuid().optional()
+                .describe("The blocked task. Providing this auto-sets task status to blocked."),
+            description: z.string().max(3000).optional()
+                .describe("Additional context. What have you tried? What exactly is needed to unblock?")
+        },
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+    }, async ({ workflow_id, title, blocker_type, task_id, description }) => {
+        try {
+            const db = await getDb();
+            const id = newId();
+            if (task_id) {
+                await db.query(`UPDATE tasks SET status = 'blocked', updated_at = NOW() WHERE id = $1`, [task_id]);
+            }
+            await db.query(`INSERT INTO blockers (id, task_id, workflow_id, title, description, blocker_type)
+           VALUES ($1, $2, $3, $4, $5, $6)`, [id, task_id ?? null, workflow_id, title, description ?? null, blocker_type]);
+            const blocker = await findOne(db, `SELECT * FROM blockers WHERE id = $1`, [id]);
+            return { content: [{ type: "text", text: JSON.stringify(blocker, null, 2) }] };
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+        }
+    });
+    server.registerTool("flowmind_blocker_resolve", {
+        title: "Resolve Blocker",
+        description: `Mark a blocker as resolved.
+
+Always provide a resolution note — this is training data for predicting future blockers
+and is the most valuable signal in the system after actual_minutes on tasks.
+
+Auto-behavior: if blocker has a task_id and unblock_task=true, task is set back to in_progress.`,
+        inputSchema: {
+            blocker_id: z.string().uuid(),
+            resolution: z.string().min(1).max(2000)
+                .describe("How was this resolved? Be specific — this trains blocker prediction."),
+            unblock_task: z.boolean().default(true)
+                .describe("Reset associated task to in_progress on resolve")
+        },
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    }, async ({ blocker_id, resolution, unblock_task }) => {
+        try {
+            const db = await getDb();
+            const blocker = await findOne(db, `SELECT * FROM blockers WHERE id = $1`, [blocker_id]);
+            if (!blocker) {
+                return { content: [{ type: "text", text: `Error: Blocker ${blocker_id} not found` }], isError: true };
+            }
+            if (blocker.status === "resolved") {
+                return { content: [{ type: "text", text: `Error: Blocker is already resolved` }], isError: true };
+            }
+            await db.query(`UPDATE blockers
+           SET status = 'resolved',
+               resolution = $1,
+               resolved_at = NOW(),
+               resolution_minutes = EXTRACT(EPOCH FROM (NOW() - opened_at)) / 60
+           WHERE id = $2`, [resolution, blocker_id]);
+            if (unblock_task && blocker.task_id) {
+                await db.query(`UPDATE tasks SET status = 'in_progress', updated_at = NOW()
+             WHERE id = $1 AND status = 'blocked'`, [blocker.task_id]);
+            }
+            const updated = await findOne(db, `SELECT * FROM blockers WHERE id = $1`, [blocker_id]);
+            return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+        }
+    });
+    server.registerTool("flowmind_blocker_escalate", {
+        title: "Escalate Blocker",
+        description: `Mark a blocker as escalated — open but needs urgent attention.
+
+Use when a blocker has been open too long and needs to be surfaced to stakeholders.`,
+        inputSchema: {
+            blocker_id: z.string().uuid(),
+            reason: z.string().min(1).max(1000).describe("Why is this being escalated?")
+        },
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    }, async ({ blocker_id, reason }) => {
+        try {
+            const db = await getDb();
+            await db.query(`UPDATE blockers SET status = 'escalated', description = COALESCE(description, '') || ' [ESCALATED: ' || $1 || ']' WHERE id = $2`, [reason, blocker_id]);
+            const updated = await findOne(db, `SELECT * FROM blockers WHERE id = $1`, [blocker_id]);
+            return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+        }
+    });
+    server.registerTool("flowmind_blocker_list", {
+        title: "List Blockers",
+        description: `List blockers by workflow and/or status.
+
+Call this when user asks about blockers. session_init already surfaces open blockers — don't duplicate.`,
+        inputSchema: {
+            workflow_id: z.string().uuid().optional(),
+            status: z.enum(["open", "resolved", "escalated"]).default("open"),
+            limit: z.number().int().min(1).max(100).default(50),
+            offset: z.number().int().min(0).default(0)
+        },
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    }, async ({ workflow_id, status, limit, offset }) => {
+        try {
+            const db = await getDb();
+            const conditions = [`status = $1`];
+            const values = [status];
+            let idx = 2;
+            if (workflow_id) {
+                conditions.push(`workflow_id = $${idx++}`);
+                values.push(workflow_id);
+            }
+            values.push(limit, offset);
+            const result = await db.query(`SELECT * FROM blockers WHERE ${conditions.join(" AND ")}
+           ORDER BY opened_at DESC LIMIT $${idx++} OFFSET $${idx++}`, values);
+            return { content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }] };
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+        }
+    });
+}
+//# sourceMappingURL=blockers.js.map

@@ -1,0 +1,4 @@
+node_modules/
+.flowmind-workflow
+qa-report-*.md
+/tmp/
