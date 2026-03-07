@@ -61,7 +61,7 @@ export async function buildSessionContext(
   };
 }
 
-// ── Private helpers ───────────────────────────────────────────────────────────
+// ── Exported helpers (reused by context service) ─────────────────────────────
 
 async function getWorkflowSummary(
   db: PGlite,
@@ -74,7 +74,7 @@ async function getWorkflowSummary(
   return result.rows[0] ?? null;
 }
 
-async function getActiveTasks(
+export async function getActiveTasks(
   db: PGlite,
   workflowId: string
 ): Promise<Pick<Task, "id" | "title" | "priority" | "status">[]> {
@@ -92,7 +92,7 @@ async function getActiveTasks(
   return result.rows;
 }
 
-async function getOpenBlockers(
+export async function getOpenBlockers(
   db: PGlite,
   workflowId: string
 ): Promise<Pick<Blocker, "id" | "title" | "blocker_type">[]> {
@@ -112,7 +112,7 @@ async function getOpenBlockers(
  * Matches on tags and title keywords extracted from file paths.
  * No semantic search — purely structural matching on file path tokens.
  */
-async function getRelevantDecisions(
+export async function getRelevantDecisions(
   db: PGlite,
   workflowId: string,
   recentFiles: string[],
@@ -185,7 +185,7 @@ async function getTeammateActivity(
   return [];
 }
 
-function buildSessionHint(
+export function buildSessionHint(
   activeTasks: Pick<Task, "id" | "title" | "priority" | "status">[],
   openBlockers: Pick<Blocker, "id" | "title" | "blocker_type">[],
   teammates: TeammateActivity[]
@@ -217,7 +217,7 @@ function buildSessionHint(
   return parts.join(". ") + ".";
 }
 
-function extractFileTokens(files: string[]): string[] {
+export function extractFileTokens(files: string[]): string[] {
   const tokens = new Set<string>();
   for (const file of files) {
     // Split on path separators and remove extensions
@@ -230,7 +230,7 @@ function extractFileTokens(files: string[]): string[] {
   return Array.from(tokens);
 }
 
-const NOISE_TOKENS = new Set([
+export const NOISE_TOKENS = new Set([
   "src", "lib", "dist", "node", "modules", "index", "test",
   "spec", "types", "utils", "helpers", "common", "shared",
   "ts", "js", "json", "md", "tsx", "jsx", "css", "scss",

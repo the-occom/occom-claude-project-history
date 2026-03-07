@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getDb, newId, findOne, withTransaction } from "../db.js";
-import type { Blocker } from "../types.js";
+import { getDb, newId, findOne, withTransaction, ConflictError } from "../db.js";
+import type { Blocker, Task } from "../types.js";
 
 export function registerBlockerTools(server: McpServer): void {
 
@@ -40,22 +40,31 @@ Auto-behavior: if task_id is provided, the task status is automatically set to '
     },
     async ({ workflow_id, title, blocker_type, task_id, description }) => {
       try {
-        const db = await getDb();
         const id = newId();
 
-        if (task_id) {
-          await db.query(
-            `UPDATE tasks SET status = 'blocked', updated_at = NOW() WHERE id = $1`,
-            [task_id]
+        await withTransaction(async (tx) => {
+          if (task_id) {
+            const { rows } = await tx.query<Task>(
+              `SELECT updated_at FROM tasks WHERE id = $1`, [task_id]
+            );
+            if (rows[0]) {
+              const result = await tx.query(
+                `UPDATE tasks SET status = 'blocked', updated_at = NOW()
+                 WHERE id = $1 AND updated_at = $2`,
+                [task_id, rows[0].updated_at]
+              );
+              if (result.affectedRows === 0) throw new ConflictError("tasks", task_id);
+            }
+          }
+
+          await tx.query(
+            `INSERT INTO blockers (id, task_id, workflow_id, title, description, blocker_type)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [id, task_id ?? null, workflow_id, title, description ?? null, blocker_type]
           );
-        }
+        });
 
-        await db.query(
-          `INSERT INTO blockers (id, task_id, workflow_id, title, description, blocker_type)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [id, task_id ?? null, workflow_id, title, description ?? null, blocker_type]
-        );
-
+        const db = await getDb();
         const blocker = await findOne<Blocker>(db, `SELECT * FROM blockers WHERE id = $1`, [id]);
         return { content: [{ type: "text", text: JSON.stringify(blocker, null, 2) }] };
       } catch (err: unknown) {
@@ -88,20 +97,22 @@ Auto-behavior: if blocker has a task_id and unblock_task=true, task is set back 
       try {
         await withTransaction(async (tx) => {
           const { rows } = await tx.query<Blocker>(
-            `SELECT * FROM blockers WHERE id = $1 FOR UPDATE`, [blocker_id]
+            `SELECT * FROM blockers WHERE id = $1`, [blocker_id]
           );
           if (!rows[0]) throw new Error(`Blocker ${blocker_id} not found`);
           if (rows[0].status === "resolved") throw new Error(`Blocker is already resolved`);
 
-          await tx.query(
+          const result = await tx.query(
             `UPDATE blockers
              SET status = 'resolved',
                  resolution = $1,
                  resolved_at = NOW(),
-                 resolution_minutes = EXTRACT(EPOCH FROM (NOW() - opened_at)) / 60
-             WHERE id = $2`,
-            [resolution, blocker_id]
+                 resolution_minutes = EXTRACT(EPOCH FROM (NOW() - opened_at)) / 60,
+                 updated_at = NOW()
+             WHERE id = $2 AND updated_at = $3`,
+            [resolution, blocker_id, rows[0].updated_at]
           );
+          if (result.affectedRows === 0) throw new ConflictError("blockers", blocker_id);
 
           if (unblock_task && rows[0].task_id) {
             await tx.query(
@@ -138,13 +149,18 @@ Use when a blocker has been open too long and needs to be surfaced to stakeholde
       try {
         await withTransaction(async (tx) => {
           const { rows } = await tx.query<Blocker>(
-            `SELECT * FROM blockers WHERE id = $1 FOR UPDATE`, [blocker_id]
+            `SELECT * FROM blockers WHERE id = $1`, [blocker_id]
           );
           if (!rows[0]) throw new Error(`Blocker ${blocker_id} not found`);
-          await tx.query(
-            `UPDATE blockers SET status = 'escalated', description = COALESCE(description, '') || ' [ESCALATED: ' || $1 || ']' WHERE id = $2`,
-            [reason, blocker_id]
+          const result = await tx.query(
+            `UPDATE blockers
+             SET status = 'escalated',
+                 description = COALESCE(description, '') || ' [ESCALATED: ' || $1 || ']',
+                 updated_at = NOW()
+             WHERE id = $2 AND updated_at = $3`,
+            [reason, blocker_id, rows[0].updated_at]
           );
+          if (result.affectedRows === 0) throw new ConflictError("blockers", blocker_id);
         });
         const db = await getDb();
         const updated = await findOne<Blocker>(db, `SELECT * FROM blockers WHERE id = $1`, [blocker_id]);

@@ -3,7 +3,9 @@ import { getDb, newId, findOne } from "../db.js";
 import { getGitContext, inferWorkflowNameFromBranch, branchMatchesPattern } from "../services/git.js";
 import { buildSessionContext } from "../services/retrieval.js";
 import { runCompression, getStorageSummary } from "../services/compressor.js";
-export function registerSessionTools(server) {
+import { contextSync, registerSession } from "../services/context.js";
+export function registerSessionTools(server, sessionId) {
+    registerSession(sessionId);
     // ── SESSION INIT ─────────────────────────────────────────────────────────────
     server.registerTool("cph_session_init", {
         title: "Initialize Claude Project History Session",
@@ -177,6 +179,44 @@ For project context, use cph_session_init.`,
                             db_location: `~/.cph/db`
                         }, null, 2)
                     }]
+            };
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+        }
+    });
+    // ── CONTEXT SYNC ────────────────────────────────────────────────────────────
+    server.registerTool("cph_context_sync", {
+        title: "Sync Context",
+        description: `Synchronize project context with the database.
+
+Call this at the start of every session and after completing each task.
+
+First call (or full_refresh=true): returns full context snapshot like session_init.
+Subsequent calls: returns only changes (deltas) since last sync, within token budget.
+
+If a tool returns a conflict error, call this to get current state before retrying.
+
+Args:
+  - workflow_id: The workflow for this project (from CLAUDE.md)
+  - cwd: Current working directory for git context
+  - depth: How much context to load (minimal | standard | deep)
+  - full_refresh: Force a full snapshot instead of deltas
+
+Returns: { context, deltas, synced_at }`,
+        inputSchema: {
+            workflow_id: z.string().uuid().describe("Workflow ID from CLAUDE.md"),
+            cwd: z.string().optional().describe("Current working directory for git context"),
+            depth: z.enum(["minimal", "standard", "deep"]).default("standard"),
+            full_refresh: z.boolean().default(false).describe("Force full snapshot instead of deltas")
+        },
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    }, async ({ workflow_id, cwd, depth, full_refresh }) => {
+        try {
+            const result = await contextSync(sessionId, workflow_id, cwd, depth, full_refresh);
+            return {
+                content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
             };
         }
         catch (err) {

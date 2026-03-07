@@ -66,6 +66,7 @@ export interface Blocker {
   resolved_at: string | null;
   resolution_minutes: number | null; // computed on resolve
   created_at: string;
+  updated_at: string;
 }
 
 export interface Decision {

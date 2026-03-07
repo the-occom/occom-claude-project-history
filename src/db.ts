@@ -107,10 +107,60 @@ async function migrate(db: PGlite): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_decisions_tags        ON decisions(tags);
     CREATE INDEX IF NOT EXISTS idx_decisions_commit      ON decisions(commit_hash);
   `);
+
+  // v0.3.0 — add updated_at to blockers, notification triggers
+  await db.exec(`
+    ALTER TABLE blockers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+    CREATE OR REPLACE FUNCTION cph_notify_change() RETURNS trigger AS $$
+    BEGIN
+      PERFORM pg_notify('cph_changes', json_build_object(
+        'table', TG_TABLE_NAME,
+        'op', TG_OP,
+        'id', COALESCE(NEW.id, OLD.id),
+        'workflow_id', COALESCE(
+          CASE WHEN TG_TABLE_NAME = 'workflows' THEN COALESCE(NEW.id, OLD.id)
+               ELSE COALESCE(NEW.workflow_id, OLD.workflow_id) END,
+          'unknown'
+        )
+      )::text);
+      RETURN COALESCE(NEW, OLD);
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS trg_tasks_changes ON tasks;
+    CREATE TRIGGER trg_tasks_changes
+      AFTER INSERT OR UPDATE OR DELETE ON tasks
+      FOR EACH ROW EXECUTE FUNCTION cph_notify_change();
+
+    DROP TRIGGER IF EXISTS trg_blockers_changes ON blockers;
+    CREATE TRIGGER trg_blockers_changes
+      AFTER INSERT OR UPDATE OR DELETE ON blockers
+      FOR EACH ROW EXECUTE FUNCTION cph_notify_change();
+
+    DROP TRIGGER IF EXISTS trg_decisions_changes ON decisions;
+    CREATE TRIGGER trg_decisions_changes
+      AFTER INSERT OR UPDATE OR DELETE ON decisions
+      FOR EACH ROW EXECUTE FUNCTION cph_notify_change();
+
+    DROP TRIGGER IF EXISTS trg_workflows_changes ON workflows;
+    CREATE TRIGGER trg_workflows_changes
+      AFTER INSERT OR UPDATE OR DELETE ON workflows
+      FOR EACH ROW EXECUTE FUNCTION cph_notify_change();
+  `);
 }
 
 export function newId(): string {
   return randomUUID();
+}
+
+export class ConflictError extends Error {
+  constructor(table: string, id: string) {
+    super(
+      `Conflict: ${table} ${id} was modified by another session. Call cph_context_sync to get current state.`
+    );
+    this.name = "ConflictError";
+  }
 }
 
 export async function withTransaction<T>(

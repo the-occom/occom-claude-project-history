@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getDb, newId, findOne, PRIORITY_ORDER, withTransaction } from "../db.js";
+import { getDb, newId, findOne, PRIORITY_ORDER, withTransaction, ConflictError } from "../db.js";
 export function registerTaskTools(server) {
     server.registerTool("cph_task_create", {
         title: "Create Task",
@@ -59,15 +59,17 @@ State machine: pending → in_progress (only valid transition from this tool)`,
     }, async ({ task_id }) => {
         try {
             await withTransaction(async (tx) => {
-                const { rows } = await tx.query(`SELECT * FROM tasks WHERE id = $1 FOR UPDATE`, [task_id]);
+                const { rows } = await tx.query(`SELECT * FROM tasks WHERE id = $1`, [task_id]);
                 if (!rows[0])
                     throw new Error(`Task ${task_id} not found`);
                 if (rows[0].status === "completed" || rows[0].status === "cancelled") {
                     throw new Error(`Cannot start a ${rows[0].status} task. Create a new task instead.`);
                 }
-                await tx.query(`UPDATE tasks
+                const result = await tx.query(`UPDATE tasks
              SET status = 'in_progress', started_at = COALESCE(started_at, NOW()), updated_at = NOW()
-             WHERE id = $1`, [task_id]);
+             WHERE id = $1 AND updated_at = $2`, [task_id, rows[0].updated_at]);
+                if (result.affectedRows === 0)
+                    throw new ConflictError("tasks", task_id);
             });
             const db = await getDb();
             const updated = await findOne(db, `SELECT * FROM tasks WHERE id = $1`, [task_id]);
@@ -101,7 +103,7 @@ Args:
     }, async ({ task_id, actual_minutes, completion_notes }) => {
         try {
             await withTransaction(async (tx) => {
-                const { rows } = await tx.query(`SELECT * FROM tasks WHERE id = $1 FOR UPDATE`, [task_id]);
+                const { rows } = await tx.query(`SELECT * FROM tasks WHERE id = $1`, [task_id]);
                 if (!rows[0])
                     throw new Error(`Task ${task_id} not found`);
                 if (rows[0].status !== "in_progress" && rows[0].status !== "blocked") {
@@ -122,8 +124,10 @@ Args:
                     fields.push(`completion_notes = $${idx++}`);
                     values.push(completion_notes);
                 }
-                values.push(task_id);
-                await tx.query(`UPDATE tasks SET ${fields.join(", ")} WHERE id = $${idx}`, values);
+                values.push(task_id, rows[0].updated_at);
+                const result = await tx.query(`UPDATE tasks SET ${fields.join(", ")} WHERE id = $${idx++} AND updated_at = $${idx}`, values);
+                if (result.affectedRows === 0)
+                    throw new ConflictError("tasks", task_id);
             });
             const db = await getDb();
             const updated = await findOne(db, `SELECT * FROM tasks WHERE id = $1`, [task_id]);
@@ -234,7 +238,6 @@ Call this only when explicitly asked — session_init already provides active ta
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     }, async ({ task_id, title, description, priority, estimated_minutes }) => {
         try {
-            const db = await getDb();
             const fields = ["updated_at = NOW()"];
             const values = [];
             let idx = 1;
@@ -257,8 +260,16 @@ Call this only when explicitly asked — session_init already provides active ta
             if (fields.length === 1) {
                 return { content: [{ type: "text", text: "Error: No fields to update" }], isError: true };
             }
-            values.push(task_id);
-            await db.query(`UPDATE tasks SET ${fields.join(", ")} WHERE id = $${idx}`, values);
+            await withTransaction(async (tx) => {
+                const { rows } = await tx.query(`SELECT * FROM tasks WHERE id = $1`, [task_id]);
+                if (!rows[0])
+                    throw new Error(`Task ${task_id} not found`);
+                values.push(task_id, rows[0].updated_at);
+                const result = await tx.query(`UPDATE tasks SET ${fields.join(", ")} WHERE id = $${idx++} AND updated_at = $${idx}`, values);
+                if (result.affectedRows === 0)
+                    throw new ConflictError("tasks", task_id);
+            });
+            const db = await getDb();
             const updated = await findOne(db, `SELECT * FROM tasks WHERE id = $1`, [task_id]);
             return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
         }
@@ -284,13 +295,16 @@ Args:
     }, async ({ task_id, reason }) => {
         try {
             await withTransaction(async (tx) => {
-                const { rows } = await tx.query(`SELECT * FROM tasks WHERE id = $1 FOR UPDATE`, [task_id]);
+                const { rows } = await tx.query(`SELECT * FROM tasks WHERE id = $1`, [task_id]);
                 if (!rows[0])
                     throw new Error(`Task ${task_id} not found`);
                 if (rows[0].status === "completed" || rows[0].status === "cancelled") {
                     throw new Error(`Task is already '${rows[0].status}'. Cannot cancel.`);
                 }
-                await tx.query(`UPDATE tasks SET status = 'cancelled', completion_notes = $1, completed_at = NOW(), updated_at = NOW() WHERE id = $2`, [reason ?? null, task_id]);
+                const result = await tx.query(`UPDATE tasks SET status = 'cancelled', completion_notes = $1, completed_at = NOW(), updated_at = NOW()
+             WHERE id = $2 AND updated_at = $3`, [reason ?? null, task_id, rows[0].updated_at]);
+                if (result.affectedRows === 0)
+                    throw new ConflictError("tasks", task_id);
             });
             const db = await getDb();
             const updated = await findOne(db, `SELECT * FROM tasks WHERE id = $1`, [task_id]);

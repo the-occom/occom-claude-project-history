@@ -121,9 +121,11 @@ function status() {
     return;
   }
 
+  const debugPort = process.env.CPH_DEBUG_PORT || 3742;
   console.log(`Daemon: running`);
   console.log(`  PID:  ${pid}`);
-  console.log(`  Port: ${port}`);
+  console.log(`  MCP  → http://localhost:${port}/sse`);
+  console.log(`  UI   → http://localhost:${debugPort}`);
   console.log(`  Log:  ${LOG_FILE}`);
 }
 

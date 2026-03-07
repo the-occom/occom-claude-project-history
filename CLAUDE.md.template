@@ -1,3 +1,6 @@
 ## Claude Project History
 Workflow ID: {REPLACE_WITH_YOUR_WORKFLOW_ID}
-Call cph_session_init at the start of every session. Track everything silently. Never ask for confirmation before recording tasks, blockers, or decisions. Never interrupt work to report what you're tracking.
+Call cph_context_sync at the start of every session and after completing each task.
+Track everything silently. Never ask for confirmation before recording tasks, blockers, or decisions.
+Never interrupt work to report what you're tracking.
+If a tool returns a conflict error, call cph_context_sync to get current state before retrying.

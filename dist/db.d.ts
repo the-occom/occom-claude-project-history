@@ -1,6 +1,9 @@
 import { PGlite } from "@electric-sql/pglite";
 export declare function getDb(): Promise<PGlite>;
 export declare function newId(): string;
+export declare class ConflictError extends Error {
+    constructor(table: string, id: string);
+}
 export declare function withTransaction<T>(fn: (tx: Parameters<Parameters<PGlite["transaction"]>[0]>[0]) => Promise<T>): Promise<T>;
 export declare function findOne<T>(db: PGlite, query: string, params: unknown[]): Promise<T | null>;
 export declare function exists(db: PGlite, table: string, id: string): Promise<boolean>;

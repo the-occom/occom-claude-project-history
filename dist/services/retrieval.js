@@ -35,12 +35,12 @@ export async function buildSessionContext(db, workflowId, depth, gitContext, eng
         retrieval_depth: depth,
     };
 }
-// ── Private helpers ───────────────────────────────────────────────────────────
+// ── Exported helpers (reused by context service) ─────────────────────────────
 async function getWorkflowSummary(db, workflowId) {
     const result = await db.query(`SELECT * FROM workflows WHERE id = $1`, [workflowId]);
     return result.rows[0] ?? null;
 }
-async function getActiveTasks(db, workflowId) {
+export async function getActiveTasks(db, workflowId) {
     const result = await db.query(`SELECT id, title, priority, status
      FROM tasks
      WHERE workflow_id = $1
@@ -51,7 +51,7 @@ async function getActiveTasks(db, workflowId) {
      LIMIT 10`, [workflowId]);
     return result.rows;
 }
-async function getOpenBlockers(db, workflowId) {
+export async function getOpenBlockers(db, workflowId) {
     const result = await db.query(`SELECT id, title, blocker_type
      FROM blockers
      WHERE workflow_id = $1 AND status = 'open'
@@ -64,7 +64,7 @@ async function getOpenBlockers(db, workflowId) {
  * Matches on tags and title keywords extracted from file paths.
  * No semantic search — purely structural matching on file path tokens.
  */
-async function getRelevantDecisions(db, workflowId, recentFiles, limit) {
+export async function getRelevantDecisions(db, workflowId, recentFiles, limit) {
     if (!recentFiles.length) {
         // Fall back to most recent decisions
         const result = await db.query(`SELECT id, title, decision
@@ -104,7 +104,7 @@ async function getTeammateActivity(db, workflowId, currentEngineerId) {
     // For now returns empty — the hook is ready when sync is added
     return [];
 }
-function buildSessionHint(activeTasks, openBlockers, teammates) {
+export function buildSessionHint(activeTasks, openBlockers, teammates) {
     const parts = [];
     if (openBlockers.length) {
         parts.push(`${openBlockers.length} open blocker${openBlockers.length > 1 ? "s" : ""} need attention`);
@@ -124,7 +124,7 @@ function buildSessionHint(activeTasks, openBlockers, teammates) {
         return "No active work. Start a task to begin tracking.";
     return parts.join(". ") + ".";
 }
-function extractFileTokens(files) {
+export function extractFileTokens(files) {
     const tokens = new Set();
     for (const file of files) {
         // Split on path separators and remove extensions
@@ -137,7 +137,7 @@ function extractFileTokens(files) {
     }
     return Array.from(tokens);
 }
-const NOISE_TOKENS = new Set([
+export const NOISE_TOKENS = new Set([
     "src", "lib", "dist", "node", "modules", "index", "test",
     "spec", "types", "utils", "helpers", "common", "shared",
     "ts", "js", "json", "md", "tsx", "jsx", "css", "scss",

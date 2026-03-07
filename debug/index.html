@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>cph // project memory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0a0a;
+    --surface:   #111111;
+    --border:    #1e1e1e;
+    --border-hi: #2a2a2a;
+    --text:      #c8c8c8;
+    --muted:     #4a4a4a;
+    --dim:       #2e2e2e;
+    --green:     #39d353;
+    --amber:     #e3a84a;
+    --red:       #e05c5c;
+    --blue:      #4a9eff;
+    --purple:    #9b7fe8;
+    --cyan:      #3ecfcf;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── header ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--green);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    font-size: 12px;
+  }
+
+  .logo-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--green); }
+    50%       { opacity: 0.4; box-shadow: 0 0 3px var(--green); }
+  }
+
+  .header-meta {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .status-pill {
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .status-pill.ok     { background: rgba(57,211,83,0.12); color: var(--green); border: 1px solid rgba(57,211,83,0.25); }
+  .status-pill.error  { background: rgba(224,92,92,0.12); color: var(--red);   border: 1px solid rgba(224,92,92,0.25); }
+  .status-pill.warn   { background: rgba(227,168,74,0.12); color: var(--amber); border: 1px solid rgba(227,168,74,0.25); }
+
+  .refresh-btn {
+    background: none;
+    border: 1px solid var(--border-hi);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.05em;
+  }
+  .refresh-btn:hover { border-color: var(--green); color: var(--green); }
+  .refresh-btn.spinning { animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── layout ── */
+  .shell {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    min-height: calc(100vh - 48px);
+  }
+
+  nav {
+    border-right: 1px solid var(--border);
+    padding: 20px 0;
+    position: sticky;
+    top: 48px;
+    height: calc(100vh - 48px);
+    overflow-y: auto;
+  }
+
+  .nav-section {
+    padding: 0 16px;
+    margin-bottom: 20px;
+  }
+
+  .nav-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+    padding: 0 4px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-radius: 2px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 12px;
+    transition: all 0.1s;
+    border: 1px solid transparent;
+    gap: 8px;
+  }
+
+  .nav-item:hover { color: var(--text); background: var(--surface); }
+
+  .nav-item.active {
+    color: var(--green);
+    background: rgba(57,211,83,0.06);
+    border-color: rgba(57,211,83,0.15);
+  }
+
+  .nav-count {
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--dim);
+    padding: 0 5px;
+    border-radius: 10px;
+    min-width: 20px;
+    text-align: center;
+  }
+
+  .nav-item.active .nav-count { background: rgba(57,211,83,0.15); color: var(--green); }
+
+  /* ── main ── */
+  main {
+    padding: 24px;
+    overflow-y: auto;
+  }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── panel header ── */
+  .panel-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    letter-spacing: 0.03em;
+  }
+
+  .panel-title span {
+    color: var(--muted);
+    font-weight: 300;
+    font-size: 12px;
+    margin-left: 8px;
+  }
+
+  /* ── stat row ── */
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 14px 16px;
+    border-radius: 3px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .stat-value {
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--text);
+  }
+
+  .stat-value.green  { color: var(--green); }
+  .stat-value.amber  { color: var(--amber); }
+  .stat-value.red    { color: var(--red); }
+  .stat-value.blue   { color: var(--blue); }
+  .stat-value.purple { color: var(--purple); }
+
+  /* ── table ── */
+  .table-wrap {
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  thead tr {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  th {
+    text-align: left;
+    padding: 9px 14px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+  td {
+    padding: 10px 14px;
+    color: var(--text);
+    vertical-align: top;
+    max-width: 300px;
+  }
+
+  td.mono { font-family: var(--mono); }
+  td.dim  { color: var(--muted); font-size: 11px; }
+  td.id   { color: var(--dim); font-size: 10px; font-family: var(--mono); }
+
+  /* ── badges ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 2px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .badge.active      { background: rgba(57,211,83,0.12);  color: var(--green);  border: 1px solid rgba(57,211,83,0.2); }
+  .badge.in_progress { background: rgba(74,158,255,0.12); color: var(--blue);   border: 1px solid rgba(74,158,255,0.2); }
+  .badge.pending     { background: rgba(74,74,74,0.3);    color: var(--muted);  border: 1px solid rgba(74,74,74,0.4); }
+  .badge.blocked     { background: rgba(224,92,92,0.12);  color: var(--red);    border: 1px solid rgba(224,92,92,0.2); }
+  .badge.completed   { background: rgba(57,211,83,0.07);  color: #3a8a4a;       border: 1px solid rgba(57,211,83,0.1); }
+  .badge.cancelled   { background: rgba(74,74,74,0.2);    color: var(--dim);    border: 1px solid rgba(74,74,74,0.3); }
+  .badge.paused      { background: rgba(227,168,74,0.12); color: var(--amber);  border: 1px solid rgba(227,168,74,0.2); }
+  .badge.open        { background: rgba(227,168,74,0.12); color: var(--amber);  border: 1px solid rgba(227,168,74,0.2); }
+  .badge.resolved    { background: rgba(57,211,83,0.07);  color: #3a8a4a;       border: 1px solid rgba(57,211,83,0.1); }
+  .badge.escalated   { background: rgba(224,92,92,0.15);  color: var(--red);    border: 1px solid rgba(224,92,92,0.3); }
+  .badge.archived    { background: rgba(74,74,74,0.2);    color: var(--dim);    border: 1px solid var(--border); }
+
+  .badge.critical { background: rgba(224,92,92,0.12);  color: var(--red);    border: 1px solid rgba(224,92,92,0.2); }
+  .badge.high     { background: rgba(227,168,74,0.12); color: var(--amber);  border: 1px solid rgba(227,168,74,0.2); }
+  .badge.medium   { background: rgba(74,158,255,0.10); color: var(--blue);   border: 1px solid rgba(74,158,255,0.2); }
+  .badge.low      { background: rgba(74,74,74,0.2);    color: var(--muted);  border: 1px solid rgba(74,74,74,0.3); }
+
+  /* ── tags ── */
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tag {
+    background: var(--dim);
+    color: var(--muted);
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-size: 10px;
+    font-family: var(--mono);
+  }
+
+  /* ── empty state ── */
+  .empty {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .empty-icon { font-size: 28px; margin-bottom: 10px; opacity: 0.3; }
+  .empty p { margin-top: 4px; }
+
+  /* ── insights panel ── */
+  .insights-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+  }
+
+  .insight-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 16px;
+  }
+
+  .insight-card h3 {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  .insight-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .insight-row:last-child { border-bottom: none; }
+  .insight-row .label { color: var(--muted); }
+  .insight-row .val { font-weight: 500; color: var(--text); }
+  .insight-row .val.good { color: var(--green); }
+  .insight-row .val.warn { color: var(--amber); }
+  .insight-row .val.bad  { color: var(--red); }
+
+  /* ── query panel ── */
+  .query-area {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  .query-bar {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding: 0 12px;
+    gap: 8px;
+  }
+
+  .query-prompt { color: var(--green); font-size: 14px; }
+
+  textarea {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 10px 4px;
+    resize: none;
+    outline: none;
+    min-height: 80px;
+    line-height: 1.6;
+  }
+
+  .run-btn {
+    background: rgba(57,211,83,0.1);
+    border: 1px solid rgba(57,211,83,0.25);
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 14px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    align-self: flex-start;
+    margin: 10px 0;
+  }
+  .run-btn:hover { background: rgba(57,211,83,0.18); }
+
+  .query-result {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    padding: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 400px;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+  }
+
+  .query-result.error { color: var(--red); }
+
+  /* ── loading ── */
+  .loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    padding: 40px;
+    justify-content: center;
+  }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 1.5px solid var(--border-hi);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  /* ── time ── */
+  .ts { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+  /* ── accuracy bar ── */
+  .acc-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .bar-track {
+    flex: 1; height: 4px; background: var(--dim); border-radius: 2px; overflow: hidden;
+  }
+  .bar-fill { height: 100%; border-radius: 2px; }
+
+  /* ── events log ── */
+  .event-log {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .event-row {
+    display: grid;
+    grid-template-columns: 60px 140px 160px 1fr;
+    gap: 12px;
+    padding: 7px 14px;
+    border-left: 2px solid transparent;
+    transition: background 0.1s;
+    align-items: center;
+    font-size: 11px;
+  }
+
+  .event-row:hover { background: var(--surface); }
+  .event-row.context { border-left-color: var(--purple); }
+  .event-row.task    { border-left-color: var(--blue); }
+  .event-row.blocker { border-left-color: var(--amber); }
+  .event-row.decision{ border-left-color: var(--cyan); }
+  .event-row.worker  { border-left-color: var(--green); }
+
+  .event-seq { color: var(--dim); font-size: 10px; }
+  .event-type { color: var(--text); font-family: var(--mono); }
+  .event-meta { color: var(--muted); }
+  .event-payload { color: var(--dim); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .scrollable { max-height: 600px; overflow-y: auto; }
+  .scrollable::-webkit-scrollbar { width: 4px; }
+  .scrollable::-webkit-scrollbar-track { background: var(--bg); }
+  .scrollable::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    CPH // PROJECT MEMORY
+  </div>
+  <div class="header-meta">
+    <span id="conn-status" class="status-pill warn">connecting</span>
+    <span id="last-refresh" style="font-size:11px">—</span>
+    <button class="refresh-btn" onclick="refreshAll()" id="refresh-btn">⟳ refresh</button>
+    <span style="color:var(--dim)">localhost:<span id="port-display">3742</span></span>
+  </div>
+</header>
+
+<div class="shell">
+  <nav>
+    <div class="nav-section">
+      <div class="nav-label">views</div>
+      <div class="nav-item active" onclick="setPanel('overview')" data-panel="overview">
+        overview <span class="nav-count" id="nc-overview">—</span>
+      </div>
+      <div class="nav-item" onclick="setPanel('workflows')" data-panel="workflows">
+        workflows <span class="nav-count" id="nc-workflows">—</span>
+      </div>
+      <div class="nav-item" onclick="setPanel('tasks')" data-panel="tasks">
+        tasks <span class="nav-count" id="nc-tasks">—</span>
+      </div>
+      <div class="nav-item" onclick="setPanel('blockers')" data-panel="blockers">
+        blockers <span class="nav-count" id="nc-blockers">—</span>
+      </div>
+      <div class="nav-item" onclick="setPanel('decisions')" data-panel="decisions">
+        decisions <span class="nav-count" id="nc-decisions">—</span>
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">telemetry</div>
+      <div class="nav-item" onclick="setPanel('events')" data-panel="events">
+        events <span class="nav-count" id="nc-events">—</span>
+      </div>
+      <div class="nav-item" onclick="setPanel('insights')" data-panel="insights">
+        insights
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">tools</div>
+      <div class="nav-item" onclick="setPanel('query')" data-panel="query">
+        sql query
+      </div>
+    </div>
+  </nav>
+
+  <main>
+
+    <!-- OVERVIEW -->
+    <div class="panel active" id="panel-overview">
+      <div class="panel-header">
+        <div class="panel-title">overview <span>system state</span></div>
+        <span id="worker-count" class="status-pill ok" style="display:none"></span>
+      </div>
+      <div class="stat-row" id="stat-row">
+        <div class="stat-card"><div class="stat-label">workflows</div><div class="stat-value blue" id="s-workflows">—</div></div>
+        <div class="stat-card"><div class="stat-label">active tasks</div><div class="stat-value green" id="s-active">—</div></div>
+        <div class="stat-card"><div class="stat-label">open blockers</div><div class="stat-value amber" id="s-blockers">—</div></div>
+        <div class="stat-card"><div class="stat-label">decisions</div><div class="stat-value purple" id="s-decisions">—</div></div>
+        <div class="stat-card"><div class="stat-label">events (24h)</div><div class="stat-value" id="s-events">—</div></div>
+      </div>
+      <div id="overview-workflows"></div>
+    </div>
+
+    <!-- WORKFLOWS -->
+    <div class="panel" id="panel-workflows">
+      <div class="panel-header">
+        <div class="panel-title">workflows <span id="wf-count"></span></div>
+      </div>
+      <div id="workflows-table"></div>
+    </div>
+
+    <!-- TASKS -->
+    <div class="panel" id="panel-tasks">
+      <div class="panel-header">
+        <div class="panel-title">tasks <span id="task-count"></span></div>
+        <div style="display:flex;gap:8px">
+          <select id="task-filter-wf" onchange="renderTasks()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:2px;outline:none">
+            <option value="">all workflows</option>
+          </select>
+          <select id="task-filter-status" onchange="renderTasks()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:2px;outline:none">
+            <option value="">all statuses</option>
+            <option value="in_progress">in_progress</option>
+            <option value="blocked">blocked</option>
+            <option value="pending">pending</option>
+            <option value="completed">completed</option>
+            <option value="cancelled">cancelled</option>
+          </select>
+        </div>
+      </div>
+      <div id="tasks-table"></div>
+    </div>
+
+    <!-- BLOCKERS -->
+    <div class="panel" id="panel-blockers">
+      <div class="panel-header">
+        <div class="panel-title">blockers <span id="blocker-count"></span></div>
+      </div>
+      <div id="blockers-table"></div>
+    </div>
+
+    <!-- DECISIONS -->
+    <div class="panel" id="panel-decisions">
+      <div class="panel-header">
+        <div class="panel-title">decisions <span id="decision-count"></span></div>
+        <input type="text" id="decision-search" oninput="renderDecisions()" placeholder="filter by title or tags…"
+          style="background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:2px;outline:none;width:220px">
+      </div>
+      <div id="decisions-table"></div>
+    </div>
+
+    <!-- EVENTS -->
+    <div class="panel" id="panel-events">
+      <div class="panel-header">
+        <div class="panel-title">events <span id="event-count"></span></div>
+        <select id="event-filter" onchange="renderEvents()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:2px;outline:none">
+          <option value="">all types</option>
+          <option value="context">context_*</option>
+          <option value="task">task_*</option>
+          <option value="blocker">blocker_*</option>
+          <option value="decision">decision_*</option>
+          <option value="worker">worker_*</option>
+          <option value="delta">delta_*</option>
+        </select>
+      </div>
+      <div class="table-wrap scrollable" id="events-log"></div>
+    </div>
+
+    <!-- INSIGHTS -->
+    <div class="panel" id="panel-insights">
+      <div class="panel-header">
+        <div class="panel-title">insights <span>gradient summary</span></div>
+      </div>
+      <div class="insights-grid" id="insights-grid"></div>
+    </div>
+
+    <!-- SQL QUERY -->
+    <div class="panel" id="panel-query">
+      <div class="panel-header">
+        <div class="panel-title">sql query <span>read-only</span></div>
+      </div>
+      <div class="query-area">
+        <div class="query-bar">
+          <span class="query-prompt">›</span>
+          <textarea id="sql-input" placeholder="SELECT * FROM tasks WHERE status = 'in_progress' LIMIT 20;" rows="4" spellcheck="false"></textarea>
+          <button class="run-btn" onclick="runQuery()">run ↵</button>
+        </div>
+        <div id="query-result" class="query-result" style="display:none"></div>
+      </div>
+      <div style="color:var(--muted);font-size:11px;line-height:2">
+        <div>tables: <span style="color:var(--text)">workflows, tasks, blockers, decisions, engineer_preferences, events</span></div>
+        <div style="margin-top:4px;color:var(--dim)">read-only — SELECT only, mutations blocked</div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ── config ──────────────────────────────────────────────────────────────────
+const API = `http://localhost:3742/api`;
+let DB = { workflows: [], tasks: [], blockers: [], decisions: [], events: [] };
+let AUTO_REFRESH;
+
+// ── init ─────────────────────────────────────────────────────────────────────
+async function init() {
+  await refreshAll();
+  AUTO_REFRESH = setInterval(refreshAll, 10000);
+}
+
+async function refreshAll() {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+  try {
+    const [health, data] = await Promise.all([
+      fetchJSON(`${API}/health`),
+      fetchJSON(`${API}/all`),
+    ]);
+    document.getElementById('conn-status').className = 'status-pill ok';
+    document.getElementById('conn-status').textContent = 'connected';
+    DB = data;
+    updateCounts();
+    renderCurrentPanel();
+    document.getElementById('last-refresh').textContent =
+      'last refresh ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById('conn-status').className = 'status-pill error';
+    document.getElementById('conn-status').textContent = 'offline';
+  } finally {
+    btn.classList.remove('spinning');
+  }
+}
+
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+// ── panel routing ─────────────────────────────────────────────────────────────
+let currentPanel = 'overview';
+function setPanel(name) {
+  currentPanel = name;
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`panel-${name}`).classList.add('active');
+  document.querySelector(`[data-panel="${name}"]`).classList.add('active');
+  renderCurrentPanel();
+}
+
+function renderCurrentPanel() {
+  const renders = {
+    overview: renderOverview, workflows: renderWorkflows,
+    tasks: renderTasks, blockers: renderBlockers,
+    decisions: renderDecisions, events: renderEvents,
+    insights: renderInsights,
+  };
+  if (renders[currentPanel]) renders[currentPanel]();
+}
+
+// ── counts ────────────────────────────────────────────────────────────────────
+function updateCounts() {
+  const active = DB.tasks.filter(t => t.status === 'in_progress').length;
+  const openB  = DB.blockers.filter(b => b.status === 'open').length;
+  const events24h = DB.events.filter(e => {
+    return new Date(e.created_at) > new Date(Date.now() - 86400000);
+  }).length;
+
+  set('s-workflows', DB.workflows.length);
+  set('s-active',    active);
+  set('s-blockers',  openB);
+  set('s-decisions', DB.decisions.length);
+  set('s-events',    events24h);
+
+  set('nc-overview',  '');
+  set('nc-workflows', DB.workflows.length);
+  set('nc-tasks',     DB.tasks.length);
+  set('nc-blockers',  openB);
+  set('nc-decisions', DB.decisions.length);
+  set('nc-events',    DB.events.length);
+
+  // populate workflow filter
+  const sel = document.getElementById('task-filter-wf');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">all workflows</option>' +
+    DB.workflows.map(w => `<option value="${w.id}" ${w.id===cur?'selected':''}>${esc(w.name)}</option>`).join('');
+}
+
+function set(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+// ── overview ──────────────────────────────────────────────────────────────────
+function renderOverview() {
+  const active = DB.workflows.filter(w => w.status === 'active');
+  const html = active.length === 0
+    ? `<div class="empty"><div class="empty-icon">◻</div><p>no active workflows</p></div>`
+    : `<div class="table-wrap"><table>
+        <thead><tr>
+          <th>workflow</th><th>tasks</th><th>in progress</th><th>blocked</th><th>open blockers</th><th>decisions</th><th>updated</th>
+        </tr></thead>
+        <tbody>${active.map(w => {
+          const wTasks    = DB.tasks.filter(t => t.workflow_id === w.id);
+          const wIP       = wTasks.filter(t => t.status === 'in_progress').length;
+          const wBlocked  = wTasks.filter(t => t.status === 'blocked').length;
+          const wBlockers = DB.blockers.filter(b => b.workflow_id === w.id && b.status === 'open').length;
+          const wDec      = DB.decisions.filter(d => d.workflow_id === w.id).length;
+          return `<tr>
+            <td><strong style="color:var(--text)">${esc(w.name)}</strong><br>
+                <span style="color:var(--dim);font-size:10px">${esc(w.id)}</span></td>
+            <td>${wTasks.length}</td>
+            <td>${wIP > 0 ? `<span class="badge in_progress">${wIP}</span>` : `<span style="color:var(--dim)">0</span>`}</td>
+            <td>${wBlocked > 0 ? `<span class="badge blocked">${wBlocked}</span>` : `<span style="color:var(--dim)">0</span>`}</td>
+            <td>${wBlockers > 0 ? `<span class="badge open">${wBlockers}</span>` : `<span style="color:var(--dim)">0</span>`}</td>
+            <td>${wDec}</td>
+            <td class="ts">${relTime(w.updated_at)}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+  document.getElementById('overview-workflows').innerHTML = html;
+}
+
+// ── workflows ─────────────────────────────────────────────────────────────────
+function renderWorkflows() {
+  set('wf-count', `${DB.workflows.length} total`);
+  if (!DB.workflows.length) {
+    document.getElementById('workflows-table').innerHTML = emptyState('no workflows');
+    return;
+  }
+  document.getElementById('workflows-table').innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>id</th><th>name</th><th>status</th><th>branch pattern</th><th>description</th><th>created</th></tr></thead>
+      <tbody>${DB.workflows.map(w => `<tr>
+        <td class="id">${w.id.slice(0,8)}</td>
+        <td><strong style="color:var(--text)">${esc(w.name)}</strong></td>
+        <td><span class="badge ${w.status}">${w.status}</span></td>
+        <td class="mono dim">${esc(w.git_branch_pattern || '—')}</td>
+        <td class="dim">${esc(truncate(w.description, 60))}</td>
+        <td class="ts">${relTime(w.created_at)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+// ── tasks ─────────────────────────────────────────────────────────────────────
+function renderTasks() {
+  const wfFilter  = document.getElementById('task-filter-wf').value;
+  const stFilter  = document.getElementById('task-filter-status').value;
+  let tasks = DB.tasks;
+  if (wfFilter)  tasks = tasks.filter(t => t.workflow_id === wfFilter);
+  if (stFilter)  tasks = tasks.filter(t => t.status === stFilter);
+  set('task-count', `${tasks.length} shown`);
+  if (!tasks.length) {
+    document.getElementById('tasks-table').innerHTML = emptyState('no tasks match filter');
+    return;
+  }
+  const sorted = [...tasks].sort((a,b) => {
+    const order = {in_progress:0,blocked:1,pending:2,completed:3,cancelled:4};
+    return (order[a.status]??5) - (order[b.status]??5);
+  });
+  document.getElementById('tasks-table').innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>id</th><th>title</th><th>status</th><th>priority</th><th>workflow</th><th>est</th><th>actual</th><th>accuracy</th><th>updated</th></tr></thead>
+      <tbody>${sorted.map(t => {
+        const wf = DB.workflows.find(w => w.id === t.workflow_id);
+        const ratio = (t.estimated_minutes && t.actual_minutes)
+          ? (t.actual_minutes / t.estimated_minutes).toFixed(2) : null;
+        const ratioColor = !ratio ? '' : ratio < 1.2 ? 'good' : ratio < 2 ? 'warn' : 'bad';
+        return `<tr>
+          <td class="id">${t.id.slice(0,8)}</td>
+          <td style="max-width:220px"><strong style="color:var(--text)">${esc(t.title)}</strong>
+            ${t.description ? `<br><span class="dim" style="font-size:10px">${esc(truncate(t.description,80))}</span>` : ''}
+          </td>
+          <td><span class="badge ${t.status}">${t.status}</span></td>
+          <td><span class="badge ${t.priority}">${t.priority||'—'}</span></td>
+          <td class="dim">${esc(wf?.name || t.workflow_id?.slice(0,8) || '—')}</td>
+          <td class="dim">${t.estimated_minutes ? t.estimated_minutes+'m' : '—'}</td>
+          <td class="dim">${t.actual_minutes ? t.actual_minutes+'m' : '—'}</td>
+          <td>${ratio ? `<span class="insight-row val ${ratioColor}" style="font-size:11px">${ratio}×</span>` : '<span class="dim">—</span>'}</td>
+          <td class="ts">${relTime(t.updated_at)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
+// ── blockers ──────────────────────────────────────────────────────────────────
+function renderBlockers() {
+  const open = DB.blockers.filter(b => b.status !== 'resolved');
+  set('blocker-count', `${open.length} open, ${DB.blockers.length} total`);
+  if (!DB.blockers.length) {
+    document.getElementById('blockers-table').innerHTML = emptyState('no blockers recorded');
+    return;
+  }
+  const sorted = [...DB.blockers].sort((a,b) => {
+    const order = {open:0,escalated:1,resolved:2};
+    return (order[a.status]??3)-(order[b.status]??3);
+  });
+  document.getElementById('blockers-table').innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>id</th><th>title</th><th>type</th><th>status</th><th>workflow</th><th>resolution</th><th>mins</th><th>opened</th></tr></thead>
+      <tbody>${sorted.map(b => {
+        const wf = DB.workflows.find(w => w.id === b.workflow_id);
+        return `<tr>
+          <td class="id">${b.id.slice(0,8)}</td>
+          <td style="max-width:200px"><strong style="color:var(--text)">${esc(b.title)}</strong></td>
+          <td class="mono dim" style="font-size:11px">${esc(b.blocker_type||'—')}</td>
+          <td><span class="badge ${b.status}">${b.status}</span></td>
+          <td class="dim">${esc(wf?.name || '—')}</td>
+          <td class="dim" style="max-width:180px;font-size:11px">${esc(truncate(b.resolution,60)||'—')}</td>
+          <td class="dim">${b.resolution_minutes ? b.resolution_minutes+'m' : '—'}</td>
+          <td class="ts">${relTime(b.opened_at)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
+// ── decisions ─────────────────────────────────────────────────────────────────
+function renderDecisions() {
+  const q = (document.getElementById('decision-search').value || '').toLowerCase();
+  let dec = DB.decisions;
+  if (q) dec = dec.filter(d =>
+    (d.title||'').toLowerCase().includes(q) ||
+    (d.tags||'').toLowerCase().includes(q) ||
+    (d.decision||'').toLowerCase().includes(q)
+  );
+  set('decision-count', `${dec.length} shown`);
+  if (!dec.length) {
+    document.getElementById('decisions-table').innerHTML = emptyState('no decisions match');
+    return;
+  }
+  const sorted = [...dec].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  document.getElementById('decisions-table').innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>id</th><th>title</th><th>decision</th><th>tags</th><th>workflow</th><th>commit</th><th>recorded</th></tr></thead>
+      <tbody>${sorted.map(d => {
+        const wf = DB.workflows.find(w => w.id === d.workflow_id);
+        const tags = (d.tags||'').split(',').map(t=>t.trim()).filter(Boolean);
+        return `<tr>
+          <td class="id">${d.id.slice(0,8)}</td>
+          <td style="max-width:180px"><strong style="color:var(--text)">${esc(d.title)}</strong></td>
+          <td class="dim" style="max-width:240px;font-size:11px">${esc(truncate(d.decision, 100))}</td>
+          <td><div class="tags">${tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')||'—'}</div></td>
+          <td class="dim">${esc(wf?.name||'—')}</td>
+          <td class="mono dim" style="font-size:10px">${d.commit_hash ? d.commit_hash.slice(0,7) : '—'}</td>
+          <td class="ts">${relTime(d.created_at)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
+// ── events ────────────────────────────────────────────────────────────────────
+function renderEvents() {
+  const filter = document.getElementById('event-filter').value;
+  let evts = [...DB.events].sort((a,b) => new Date(b.created_at)-new Date(a.created_at));
+  if (filter) evts = evts.filter(e => e.event_type.startsWith(filter.replace('*','')));
+  evts = evts.slice(0, 200);
+  set('event-count', `${evts.length} shown`);
+  if (!evts.length) {
+    document.getElementById('events-log').innerHTML = emptyState('no events recorded');
+    return;
+  }
+  const typeClass = t => {
+    if (t.startsWith('context')) return 'context';
+    if (t.startsWith('task'))    return 'task';
+    if (t.startsWith('blocker')) return 'blocker';
+    if (t.startsWith('decision'))return 'decision';
+    if (t.startsWith('worker') || t.startsWith('delta')) return 'worker';
+    return '';
+  };
+  document.getElementById('events-log').innerHTML = `
+    <div class="event-log">
+      ${evts.map((e,i) => `
+        <div class="event-row ${typeClass(e.event_type)}">
+          <span class="event-seq">#${i+1}</span>
+          <span class="event-type">${esc(e.event_type)}</span>
+          <span class="event-meta">${relTime(e.created_at)}${e.duration_ms ? ` · ${e.duration_ms}ms` : ''}</span>
+          <span class="event-payload">${esc(JSON.stringify(e.payload||{}))}</span>
+        </div>`).join('')}
+    </div>`;
+}
+
+// ── insights ──────────────────────────────────────────────────────────────────
+function renderInsights() {
+  const completedWithEst = DB.tasks.filter(t =>
+    t.status === 'completed' && t.estimated_minutes && t.actual_minutes
+  );
+
+  // Estimation by priority
+  const byPriority = {};
+  for (const t of completedWithEst) {
+    const p = t.priority || 'medium';
+    if (!byPriority[p]) byPriority[p] = [];
+    byPriority[p].push(t.actual_minutes / t.estimated_minutes);
+  }
+
+  const estRows = Object.entries(byPriority).map(([p, ratios]) => {
+    const avg = (ratios.reduce((a,b)=>a+b,0)/ratios.length).toFixed(2);
+    const cls = avg < 1.2 ? 'good' : avg < 2 ? 'warn' : 'bad';
+    return `<div class="insight-row">
+      <span class="label">${p}</span>
+      <span class="val ${cls}">${avg}× (n=${ratios.length})</span>
+    </div>`;
+  }).join('') || `<div class="insight-row"><span class="label">no data yet</span></div>`;
+
+  // Blocker types
+  const bTypes = {};
+  for (const b of DB.blockers.filter(b=>b.status==='resolved' && b.resolution_minutes)) {
+    if (!bTypes[b.blocker_type]) bTypes[b.blocker_type] = [];
+    bTypes[b.blocker_type].push(b.resolution_minutes);
+  }
+  const blockerRows = Object.entries(bTypes).map(([type, mins]) => {
+    const avg = Math.round(mins.reduce((a,b)=>a+b,0)/mins.length);
+    const cls = avg < 60 ? 'good' : avg < 480 ? 'warn' : 'bad';
+    return `<div class="insight-row">
+      <span class="label">${esc(type)}</span>
+      <span class="val ${cls}">${avg}m avg (n=${mins.length})</span>
+    </div>`;
+  }).join('') || `<div class="insight-row"><span class="label">no data yet</span></div>`;
+
+  // Velocity (tasks/day last 7 days)
+  const now = Date.now();
+  const week = DB.tasks.filter(t => t.status==='completed' &&
+    new Date(t.completed_at) > new Date(now-7*86400000));
+  const velocity = (week.length / 7).toFixed(1);
+  const velCls = velocity > 3 ? 'good' : velocity > 1 ? 'warn' : 'bad';
+
+  // Open blockers breakdown
+  const openByType = {};
+  for (const b of DB.blockers.filter(b=>b.status==='open')) {
+    openByType[b.blocker_type] = (openByType[b.blocker_type]||0)+1;
+  }
+  const openRows = Object.entries(openByType).map(([t,n]) =>
+    `<div class="insight-row"><span class="label">${esc(t)}</span><span class="val warn">${n} open</span></div>`
+  ).join('') || `<div class="insight-row"><span class="label" style="color:var(--green)">no open blockers</span></div>`;
+
+  document.getElementById('insights-grid').innerHTML = `
+    <div class="insight-card">
+      <h3>estimation accuracy by priority</h3>
+      ${estRows}
+      <div style="color:var(--dim);font-size:10px;margin-top:8px">1.0× = perfect · >1.5× = underestimating</div>
+    </div>
+    <div class="insight-card">
+      <h3>blocker resolution time</h3>
+      ${blockerRows}
+    </div>
+    <div class="insight-card">
+      <h3>velocity</h3>
+      <div class="insight-row"><span class="label">tasks/day (7d)</span><span class="val ${velCls}">${velocity}</span></div>
+      <div class="insight-row"><span class="label">completed this week</span><span class="val">${week.length}</span></div>
+      <div class="insight-row"><span class="label">total completed</span><span class="val">${DB.tasks.filter(t=>t.status==='completed').length}</span></div>
+    </div>
+    <div class="insight-card">
+      <h3>active blockers by type</h3>
+      ${openRows}
+    </div>
+  `;
+}
+
+// ── sql query ─────────────────────────────────────────────────────────────────
+async function runQuery() {
+  const sql = document.getElementById('sql-input').value.trim();
+  if (!sql) return;
+  const el = document.getElementById('query-result');
+  el.style.display = 'block';
+  el.className = 'query-result';
+  el.textContent = 'running…';
+  try {
+    const res = await fetch(`${API}/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql }),
+    });
+    const data = await res.json();
+    if (!res.ok) { el.className = 'query-result error'; el.textContent = data.error; return; }
+    el.textContent = JSON.stringify(data.rows, null, 2);
+  } catch(e) {
+    el.className = 'query-result error';
+    el.textContent = 'connection error: ' + e.message;
+  }
+}
+
+document.getElementById('sql-input').addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') runQuery();
+});
+
+// ── utils ─────────────────────────────────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function truncate(s, n) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+function relTime(ts) {
+  if (!ts) return '—';
+  const diff = Date.now() - new Date(ts).getTime();
+  if (diff < 60000)    return 'just now';
+  if (diff < 3600000)  return Math.floor(diff/60000) + 'm ago';
+  if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
+  return Math.floor(diff/86400000) + 'd ago';
+}
+
+function emptyState(msg) {
+  return `<div class="empty"><div class="empty-icon">◻</div><p>${msg}</p></div>`;
+}
+
+init();
+</script>
+</body>
+</html>

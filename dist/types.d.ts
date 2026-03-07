@@ -43,6 +43,7 @@ export interface Blocker {
     resolved_at: string | null;
     resolution_minutes: number | null;
     created_at: string;
+    updated_at: string;
 }
 export interface Decision {
     id: string;
