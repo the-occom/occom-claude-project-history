@@ -106,6 +106,10 @@ async function migrate(db) {
 export function newId() {
     return randomUUID();
 }
+export async function withTransaction(fn) {
+    const db = await getDb();
+    return db.transaction(fn);
+}
 // ── Query helpers ─────────────────────────────────────────────────────────────
 export async function findOne(db, query, params) {
     const result = await db.query(query, params);

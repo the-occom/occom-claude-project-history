@@ -1,9 +1,7 @@
 {
   "mcpServers": {
     "cph": {
-      "command": "node",
-      "args": ["/ABSOLUTE/PATH/TO/occom-claude-project-history/dist/index.js"],
-      "env": {}
+      "url": "http://localhost:3741/sse"
     }
   }
 }

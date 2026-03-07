@@ -1,6 +1,6 @@
 {
   "name": "occom-claude-project-history",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Invisible project intelligence for Claude Code. Tracks workflows, tasks, blockers, and decisions locally with PGlite.",
   "license": "MIT",
   "repository": {
@@ -27,14 +27,20 @@
     "dev": "tsc --watch",
     "install-hooks": "node scripts/install.js",
     "test:mcp": "node scripts/test-mcp-raw.mjs",
-    "test:e2e": "bash scripts/test-e2e-claude.sh"
+    "test:e2e": "bash scripts/test-e2e-claude.sh",
+    "daemon:start": "node scripts/daemon.js start",
+    "daemon:stop": "node scripts/daemon.js stop",
+    "daemon:status": "node scripts/daemon.js status",
+    "daemon:restart": "node scripts/daemon.js restart"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "express": "^5.2.1",
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^20.0.0",
     "typescript": "^5.3.0"
   }

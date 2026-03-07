@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getDb, newId, findOne } from "../db.js";
+import { getDb, newId, findOne, withTransaction } from "../db.js";
 import type { Blocker } from "../types.js";
 
 export function registerBlockerTools(server: McpServer): void {
@@ -86,34 +86,32 @@ Auto-behavior: if blocker has a task_id and unblock_task=true, task is set back 
     },
     async ({ blocker_id, resolution, unblock_task }) => {
       try {
-        const db = await getDb();
-        const blocker = await findOne<Blocker>(db, `SELECT * FROM blockers WHERE id = $1`, [blocker_id]);
-
-        if (!blocker) {
-          return { content: [{ type: "text", text: `Error: Blocker ${blocker_id} not found` }], isError: true };
-        }
-        if (blocker.status === "resolved") {
-          return { content: [{ type: "text", text: `Error: Blocker is already resolved` }], isError: true };
-        }
-
-        await db.query(
-          `UPDATE blockers
-           SET status = 'resolved',
-               resolution = $1,
-               resolved_at = NOW(),
-               resolution_minutes = EXTRACT(EPOCH FROM (NOW() - opened_at)) / 60
-           WHERE id = $2`,
-          [resolution, blocker_id]
-        );
-
-        if (unblock_task && blocker.task_id) {
-          await db.query(
-            `UPDATE tasks SET status = 'in_progress', updated_at = NOW()
-             WHERE id = $1 AND status = 'blocked'`,
-            [blocker.task_id]
+        await withTransaction(async (tx) => {
+          const { rows } = await tx.query<Blocker>(
+            `SELECT * FROM blockers WHERE id = $1 FOR UPDATE`, [blocker_id]
           );
-        }
+          if (!rows[0]) throw new Error(`Blocker ${blocker_id} not found`);
+          if (rows[0].status === "resolved") throw new Error(`Blocker is already resolved`);
 
+          await tx.query(
+            `UPDATE blockers
+             SET status = 'resolved',
+                 resolution = $1,
+                 resolved_at = NOW(),
+                 resolution_minutes = EXTRACT(EPOCH FROM (NOW() - opened_at)) / 60
+             WHERE id = $2`,
+            [resolution, blocker_id]
+          );
+
+          if (unblock_task && rows[0].task_id) {
+            await tx.query(
+              `UPDATE tasks SET status = 'in_progress', updated_at = NOW()
+               WHERE id = $1 AND status = 'blocked'`,
+              [rows[0].task_id]
+            );
+          }
+        });
+        const db = await getDb();
         const updated = await findOne<Blocker>(db, `SELECT * FROM blockers WHERE id = $1`, [blocker_id]);
         return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
       } catch (err: unknown) {
@@ -138,11 +136,17 @@ Use when a blocker has been open too long and needs to be surfaced to stakeholde
     },
     async ({ blocker_id, reason }) => {
       try {
+        await withTransaction(async (tx) => {
+          const { rows } = await tx.query<Blocker>(
+            `SELECT * FROM blockers WHERE id = $1 FOR UPDATE`, [blocker_id]
+          );
+          if (!rows[0]) throw new Error(`Blocker ${blocker_id} not found`);
+          await tx.query(
+            `UPDATE blockers SET status = 'escalated', description = COALESCE(description, '') || ' [ESCALATED: ' || $1 || ']' WHERE id = $2`,
+            [reason, blocker_id]
+          );
+        });
         const db = await getDb();
-        await db.query(
-          `UPDATE blockers SET status = 'escalated', description = COALESCE(description, '') || ' [ESCALATED: ' || $1 || ']' WHERE id = $2`,
-          [reason, blocker_id]
-        );
         const updated = await findOne<Blocker>(db, `SELECT * FROM blockers WHERE id = $1`, [blocker_id]);
         return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
       } catch (err: unknown) {

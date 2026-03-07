@@ -9,16 +9,32 @@ Data lives in PGlite (Postgres WASM) at `~/.cph/db`.
 ## Install
 
 ```bash
-git clone <repo>
+git clone https://github.com/the-occom/occom-claude-project-history.git
 cd occom-claude-project-history
 npm install
 npm run build
-npm run install-hooks   # wires Claude Code hooks + git hook + CLAUDE.md
+npm run install-hooks   # wires hooks + daemon + .mcp.json + CLAUDE.md
 ```
 
 ## Register with Claude Code
 
-Add to `~/.claude.json` or project `.mcp.json`:
+### Daemon mode (recommended)
+
+The install script starts a background daemon and writes `.mcp.json` automatically:
+
+```json
+{
+  "mcpServers": {
+    "cph": {
+      "url": "http://localhost:3741/sse"
+    }
+  }
+}
+```
+
+All Claude Code instances share one daemon process with atomic writes.
+
+### Stdio mode (single-session fallback)
 
 ```json
 {
@@ -31,6 +47,40 @@ Add to `~/.claude.json` or project `.mcp.json`:
 }
 ```
 
+Or via npx:
+
+```json
+{
+  "mcpServers": {
+    "cph": {
+      "command": "npx",
+      "args": ["github:the-occom/occom-claude-project-history"]
+    }
+  }
+}
+```
+
+---
+
+## Daemon
+
+A long-lived background process that owns the PGlite database. All MCP clients connect via HTTP/SSE.
+
+```bash
+npm run daemon:start     # spawn detached, write PID+port
+npm run daemon:stop      # kill by PID, clean up state files
+npm run daemon:status    # print running/stopped + port
+npm run daemon:restart   # stop + start
+node scripts/daemon.js ensure   # start only if not running (used by hooks)
+```
+
+State files live at `~/.cph/`:
+- `daemon.pid` — PID of running daemon
+- `daemon.port` — port (default `3741`, scans to `3751` if busy)
+- `daemon.log` — stdout/stderr
+
+The first Claude Code hook invocation of the day auto-starts the daemon.
+
 ---
 
 ## How it works
@@ -42,9 +92,13 @@ It gets back a minimal context — active tasks, open blockers, relevant decisio
 Then it works. Tasks, blockers, and decisions are recorded silently as side effects.
 
 The hook system enforces this:
-- `PreToolUse` on Write/Edit/MultiEdit → **blocks file writes if no active task**
-- `Stop` → surfaces incomplete tasks and open blockers at session end
-- `post-commit` git hook → silently links commits to recent decisions
+- `PreToolUse` on Write/Edit/MultiEdit — **blocks file writes if no active task**
+- `Stop` — surfaces incomplete tasks and open blockers at session end
+- `post-commit` git hook — silently links commits to recent decisions
+
+### Atomic writes
+
+State-changing tools (`task_start`, `task_complete`, `task_cancel`, `blocker_resolve`, `blocker_escalate`) use `SELECT ... FOR UPDATE` row locks inside transactions. Safe for concurrent access from multiple Claude Code sessions.
 
 ---
 
@@ -118,8 +172,8 @@ cph_set_depth with depth="minimal"
 This is intentional — prevents context flood on large projects.
 
 Pattern for using decisions:
-1. `cph_decision_search` with keyword → get IDs
-2. `cph_decision_get` with specific ID → get full record
+1. `cph_decision_search` with keyword — get IDs
+2. `cph_decision_get` with specific ID — get full record
 
 Never load all decisions. Pull what you need.
 
@@ -128,17 +182,17 @@ Never load all decisions. Pull what you need.
 ## Data
 
 ```
-~/.cph/db/    ← PGlite database
-.cph-workflow ← current project's workflow ID (gitignored)
+~/.cph/db/           ← PGlite database
+~/.cph/daemon.pid    ← daemon process ID
+~/.cph/daemon.port   ← daemon port
+~/.cph/daemon.log    ← daemon logs
+.cph-workflow        ← current project's workflow ID (gitignored)
 ```
 
 **Compression runs automatically** at session end:
 - Decisions > 30 days: rationale/alternatives discarded, title+decision kept
 - Completed tasks > 7 days: description discarded, timing data kept
 - Resolved blockers > 7 days: description discarded, title+resolution kept
-
-**Upgrade trigger:** When a second engineer joins, this local DB can't be shared.
-That's the moment to move to the hosted tier for atomic multi-user writes.
 
 ---
 

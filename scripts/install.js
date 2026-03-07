@@ -13,6 +13,7 @@
 
 import { writeFileSync, mkdirSync, existsSync, readFileSync, chmodSync } from "fs";
 import { join, resolve, dirname } from "path";
+import { homedir } from "os";
 import { fileURLToPath } from "url";
 import { createInterface } from "readline";
 import { execSync } from "child_process";
@@ -131,7 +132,40 @@ async function main() {
     }
   }
 
-  // ── 4. CLAUDE.md snippet ───────────────────────────────────────────────────
+  // ── 4. Start daemon and write .mcp.json with url transport ────────────────
+  const daemonScript = join(HOOKS_DIR, "scripts", "daemon.js");
+  try {
+    execSync(`node ${daemonScript} ensure`, { stdio: "inherit" });
+    console.log(`✓ Daemon running`);
+  } catch {
+    console.log(`⚠ Could not start daemon — falling back to stdio transport`);
+  }
+
+  // Read the port the daemon bound to
+  let daemonPort = null;
+  try {
+    const portFile = join(homedir(), ".cph", "daemon.port");
+    daemonPort = readFileSync(portFile, "utf8").trim();
+  } catch {}
+
+  const mcpJsonPath = join(CWD, ".mcp.json");
+  if (daemonPort) {
+    let existingMcp = {};
+    if (existsSync(mcpJsonPath)) {
+      try { existingMcp = JSON.parse(readFileSync(mcpJsonPath, "utf8")); } catch {}
+    }
+    const mcpConfig = {
+      ...existingMcp,
+      mcpServers: {
+        ...(existingMcp.mcpServers ?? {}),
+        cph: { url: `http://localhost:${daemonPort}/sse` }
+      }
+    };
+    writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2));
+    console.log(`✓ .mcp.json written with daemon URL (port ${daemonPort})`);
+  }
+
+  // ── 5. CLAUDE.md snippet ───────────────────────────────────────────────────
   const snippet = `
 ## Claude Project History
 Workflow ID: ${workflowId}

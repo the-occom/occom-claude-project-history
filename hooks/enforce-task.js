@@ -15,9 +15,11 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
-import { join } from "path";
+import { execSync } from "child_process";
+import { join, resolve, dirname } from "path";
 import { homedir } from "os";
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
+import { fileURLToPath } from "url";
 
 const DB_PATH = join(homedir(), ".cph", "db");
 const WORKFLOW_ID_FILE = join(process.cwd(), ".cph-workflow");
@@ -49,6 +51,14 @@ async function main() {
   }
 
   if (!workflowId) process.exit(0);
+
+  // Ensure daemon is running (auto-start on first use)
+  const __hook_dirname = typeof import.meta.dirname !== "undefined"
+    ? import.meta.dirname : dirname(fileURLToPath(import.meta.url));
+  const daemonScript = resolve(__hook_dirname, "..", "scripts", "daemon.js");
+  if (existsSync(daemonScript)) {
+    try { execSync(`node ${daemonScript} ensure`, { stdio: "ignore" }); } catch {}
+  }
 
   // Check for active task in PGlite
   let db = null;

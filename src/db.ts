@@ -113,6 +113,13 @@ export function newId(): string {
   return randomUUID();
 }
 
+export async function withTransaction<T>(
+  fn: (tx: Parameters<Parameters<PGlite["transaction"]>[0]>[0]) => Promise<T>
+): Promise<T> {
+  const db = await getDb();
+  return db.transaction(fn);
+}
+
 // ── Query helpers ─────────────────────────────────────────────────────────────
 
 export async function findOne<T>(

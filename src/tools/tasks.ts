@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getDb, newId, findOne, PRIORITY_ORDER } from "../db.js";
+import { getDb, newId, findOne, PRIORITY_ORDER, withTransaction } from "../db.js";
 import type { Task } from "../types.js";
 
 export function registerTaskTools(server: McpServer): void {
@@ -72,25 +72,22 @@ State machine: pending → in_progress (only valid transition from this tool)`,
     },
     async ({ task_id }) => {
       try {
+        await withTransaction(async (tx) => {
+          const { rows } = await tx.query<Task>(
+            `SELECT * FROM tasks WHERE id = $1 FOR UPDATE`, [task_id]
+          );
+          if (!rows[0]) throw new Error(`Task ${task_id} not found`);
+          if (rows[0].status === "completed" || rows[0].status === "cancelled") {
+            throw new Error(`Cannot start a ${rows[0].status} task. Create a new task instead.`);
+          }
+          await tx.query(
+            `UPDATE tasks
+             SET status = 'in_progress', started_at = COALESCE(started_at, NOW()), updated_at = NOW()
+             WHERE id = $1`,
+            [task_id]
+          );
+        });
         const db = await getDb();
-        const task = await findOne<Task>(db, `SELECT * FROM tasks WHERE id = $1`, [task_id]);
-
-        if (!task) {
-          return { content: [{ type: "text", text: `Error: Task ${task_id} not found` }], isError: true };
-        }
-        if (task.status === "completed" || task.status === "cancelled") {
-          return {
-            content: [{ type: "text", text: `Error: Cannot start a ${task.status} task. Create a new task instead.` }],
-            isError: true
-          };
-        }
-
-        await db.query(
-          `UPDATE tasks
-           SET status = 'in_progress', started_at = COALESCE(started_at, NOW()), updated_at = NOW()
-           WHERE id = $1`,
-          [task_id]
-        );
         const updated = await findOne<Task>(db, `SELECT * FROM tasks WHERE id = $1`, [task_id]);
         return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
       } catch (err: unknown) {
@@ -125,35 +122,30 @@ Args:
     },
     async ({ task_id, actual_minutes, completion_notes }) => {
       try {
+        await withTransaction(async (tx) => {
+          const { rows } = await tx.query<Task>(
+            `SELECT * FROM tasks WHERE id = $1 FOR UPDATE`, [task_id]
+          );
+          if (!rows[0]) throw new Error(`Task ${task_id} not found`);
+          if (rows[0].status !== "in_progress" && rows[0].status !== "blocked") {
+            throw new Error(`Task is '${rows[0].status}'. Call cph_task_start first.`);
+          }
+
+          const fields = [
+            "status = 'completed'",
+            "completed_at = COALESCE(completed_at, NOW())",
+            "updated_at = NOW()"
+          ];
+          const values: unknown[] = [];
+          let idx = 1;
+
+          if (actual_minutes !== undefined)  { fields.push(`actual_minutes = $${idx++}`);    values.push(actual_minutes); }
+          if (completion_notes !== undefined) { fields.push(`completion_notes = $${idx++}`); values.push(completion_notes); }
+
+          values.push(task_id);
+          await tx.query(`UPDATE tasks SET ${fields.join(", ")} WHERE id = $${idx}`, values);
+        });
         const db = await getDb();
-        const task = await findOne<Task>(db, `SELECT * FROM tasks WHERE id = $1`, [task_id]);
-
-        if (!task) {
-          return { content: [{ type: "text", text: `Error: Task ${task_id} not found` }], isError: true };
-        }
-        if (task.status !== "in_progress" && task.status !== "blocked") {
-          return {
-            content: [{
-              type: "text",
-              text: `Error: Task is '${task.status}'. Call cph_task_start first.`
-            }],
-            isError: true
-          };
-        }
-
-        const fields = [
-          "status = 'completed'",
-          "completed_at = COALESCE(completed_at, NOW())",
-          "updated_at = NOW()"
-        ];
-        const values: unknown[] = [];
-        let idx = 1;
-
-        if (actual_minutes !== undefined)  { fields.push(`actual_minutes = $${idx++}`);    values.push(actual_minutes); }
-        if (completion_notes !== undefined) { fields.push(`completion_notes = $${idx++}`); values.push(completion_notes); }
-
-        values.push(task_id);
-        await db.query(`UPDATE tasks SET ${fields.join(", ")} WHERE id = $${idx}`, values);
         const updated = await findOne<Task>(db, `SELECT * FROM tasks WHERE id = $1`, [task_id]);
         return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
       } catch (err: unknown) {
@@ -329,23 +321,20 @@ Args:
     },
     async ({ task_id, reason }) => {
       try {
+        await withTransaction(async (tx) => {
+          const { rows } = await tx.query<Task>(
+            `SELECT * FROM tasks WHERE id = $1 FOR UPDATE`, [task_id]
+          );
+          if (!rows[0]) throw new Error(`Task ${task_id} not found`);
+          if (rows[0].status === "completed" || rows[0].status === "cancelled") {
+            throw new Error(`Task is already '${rows[0].status}'. Cannot cancel.`);
+          }
+          await tx.query(
+            `UPDATE tasks SET status = 'cancelled', completion_notes = $1, completed_at = NOW(), updated_at = NOW() WHERE id = $2`,
+            [reason ?? null, task_id]
+          );
+        });
         const db = await getDb();
-        const task = await findOne<Task>(db, `SELECT * FROM tasks WHERE id = $1`, [task_id]);
-
-        if (!task) {
-          return { content: [{ type: "text", text: `Error: Task ${task_id} not found` }], isError: true };
-        }
-        if (task.status === "completed" || task.status === "cancelled") {
-          return {
-            content: [{ type: "text", text: `Error: Task is already '${task.status}'. Cannot cancel.` }],
-            isError: true
-          };
-        }
-
-        await db.query(
-          `UPDATE tasks SET status = 'cancelled', completion_notes = $1, completed_at = NOW(), updated_at = NOW() WHERE id = $2`,
-          [reason ?? null, task_id]
-        );
         const updated = await findOne<Task>(db, `SELECT * FROM tasks WHERE id = $1`, [task_id]);
         return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
       } catch (err: unknown) {
