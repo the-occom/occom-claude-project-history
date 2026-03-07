@@ -18,7 +18,7 @@ const DB_PATH = join(homedir(), ".cph", "db");
 const WORKFLOW_ID_FILE = join(process.cwd(), ".cph-workflow");
 
 async function main() {
-  let workflowId: string | null = null;
+  let workflowId = null;
   try {
     workflowId = readFileSync(WORKFLOW_ID_FILE, "utf8").trim();
   } catch {
@@ -31,21 +31,21 @@ async function main() {
     const db = new PGlite(DB_PATH);
 
     const [inProgress, blocked, openBlockers] = await Promise.all([
-      db.query<{ id: string; title: string }>(
+      db.query(
         `SELECT id, title FROM tasks WHERE workflow_id = $1 AND status = 'in_progress' ORDER BY updated_at DESC`,
         [workflowId]
       ),
-      db.query<{ id: string; title: string }>(
+      db.query(
         `SELECT id, title FROM tasks WHERE workflow_id = $1 AND status = 'blocked' ORDER BY updated_at DESC`,
         [workflowId]
       ),
-      db.query<{ id: string; title: string; blocker_type: string }>(
+      db.query(
         `SELECT id, title, blocker_type FROM blockers WHERE workflow_id = $1 AND status = 'open' ORDER BY opened_at ASC`,
         [workflowId]
       ),
     ]);
 
-    const lines: string[] = [];
+    const lines = [];
 
     if (inProgress.rows.length) {
       lines.push(`\n[Claude Project History] ${inProgress.rows.length} task(s) still in progress:`);

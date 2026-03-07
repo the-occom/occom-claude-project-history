@@ -34,13 +34,13 @@ async function main() {
   }
 
   // Only enforce on file-writing tools
-  const toolName = (payload as Record<string, string>).tool_name ?? "";
+  const toolName = payload.tool_name ?? "";
   if (!["Write", "Edit", "MultiEdit"].includes(toolName)) {
     process.exit(0);
   }
 
   // Resolve workflow ID — from .cph-workflow file or env
-  let workflowId: string | null = null;
+  let workflowId = null;
   try {
     workflowId = readFileSync(WORKFLOW_ID_FILE, "utf8").trim();
   } catch {
@@ -51,11 +51,11 @@ async function main() {
   if (!workflowId) process.exit(0);
 
   // Check for active task in PGlite
-  let db: PGlite | null = null;
+  let db = null;
   try {
     db = new PGlite(DB_PATH);
 
-    const result = await db.query<{ count: string }>(
+    const result = await db.query(
       `SELECT COUNT(*) as count
        FROM tasks
        WHERE workflow_id = $1
