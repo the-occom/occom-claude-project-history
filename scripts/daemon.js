@@ -18,6 +18,7 @@ import {
   writeFileSync, readFileSync, unlinkSync, existsSync, openSync, mkdirSync
 } from "fs";
 import { createConnection } from "net";
+import http from "http";
 
 const __dirname = typeof import.meta.dirname !== "undefined"
   ? import.meta.dirname : dirname(fileURLToPath(import.meta.url));
@@ -25,6 +26,7 @@ const __dirname = typeof import.meta.dirname !== "undefined"
 const CPH_DIR = join(homedir(), ".cph");
 const PID_FILE = join(CPH_DIR, "daemon.pid");
 const PORT_FILE = join(CPH_DIR, "daemon.port");
+const HEARTBEAT_FILE = join(CPH_DIR, "daemon.heartbeat");
 const LOG_FILE = join(CPH_DIR, "daemon.log");
 const SERVER_PATH = resolve(__dirname, "..", "dist", "index.js");
 const DEFAULT_PORT = 3741;
@@ -34,6 +36,14 @@ mkdirSync(CPH_DIR, { recursive: true });
 function isRunning(pid) {
   try { process.kill(pid, 0); return true; }
   catch { return false; }
+}
+
+function isStale(pid) {
+  try {
+    const ts = parseInt(readFileSync(HEARTBEAT_FILE, "utf8").trim());
+    if (Date.now() - ts > 120_000 && isRunning(pid)) return true;
+  } catch {}
+  return false;
 }
 
 function readPid() {
@@ -49,6 +59,7 @@ function readPort() {
 function cleanState() {
   try { unlinkSync(PID_FILE); } catch {}
   try { unlinkSync(PORT_FILE); } catch {}
+  try { unlinkSync(HEARTBEAT_FILE); } catch {}
 }
 
 function isPortFree(port) {
@@ -88,10 +99,25 @@ async function start() {
   writeFileSync(PID_FILE, String(child.pid));
   writeFileSync(PORT_FILE, String(port));
 
-  // Wait briefly for the server to bind
-  await new Promise((r) => setTimeout(r, 500));
+  // Wait for the server to be ready (health check with retries)
+  for (let i = 0; i < 10; i++) {
+    await new Promise((r) => setTimeout(r, 300));
+    const ok = await new Promise((resolve) => {
+      const req = http.get(`http://127.0.0.1:${port}/health`, (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      });
+      req.on("error", () => resolve(false));
+      req.setTimeout(500, () => { req.destroy(); resolve(false); });
+    });
+    if (ok) {
+      console.log(`Daemon started (PID ${child.pid}, port ${port})`);
+      return;
+    }
+  }
 
-  console.log(`Daemon started (PID ${child.pid}, port ${port})`);
+  cleanState();
+  throw new Error(`Daemon spawned but failed to respond on port ${port}. Check ${LOG_FILE}`);
 }
 
 function stop() {
@@ -129,10 +155,51 @@ function status() {
   console.log(`  Log:  ${LOG_FILE}`);
 }
 
+function getDaemonVersion(port) {
+  return new Promise((resolve) => {
+    const req = http.get(`http://127.0.0.1:${port}/health`, (res) => {
+      let body = "";
+      res.on("data", (c) => body += c);
+      res.on("end", () => {
+        try { resolve(JSON.parse(body)); } catch { resolve(null); }
+      });
+    });
+    req.on("error", () => resolve(null));
+    req.setTimeout(2000, () => { req.destroy(); resolve(null); });
+  });
+}
+
 async function ensure() {
   const pid = readPid();
   if (pid && isRunning(pid)) {
-    // Already running — nothing to do
+    // Check for stale heartbeat
+    if (isStale(pid)) {
+      console.log(`Daemon PID ${pid} is stale (heartbeat > 120s old) — restarting`);
+      stop();
+      await start();
+      return;
+    }
+
+    // Check for version/schema mismatch
+    const port = readPort();
+    if (port) {
+      try {
+        const health = await getDaemonVersion(port);
+        if (health) {
+          const { SCHEMA_VERSION } = await import(
+            resolve(__dirname, "..", "dist", "db.js")
+          );
+          if (health.schema_version !== undefined && health.schema_version !== SCHEMA_VERSION) {
+            console.log(`Schema version mismatch (running: ${health.schema_version}, local: ${SCHEMA_VERSION}) — restarting`);
+            stop();
+            await start();
+            return;
+          }
+        }
+      } catch {}
+    }
+
+    // Already running, not stale, versions match — nothing to do
     return;
   }
   await start();

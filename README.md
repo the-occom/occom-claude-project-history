@@ -196,6 +196,18 @@ Never load all decisions. Pull what you need.
 
 ---
 
+## Contributing
+
+After editing TypeScript files in `src/`, always rebuild before testing:
+
+```bash
+npm run build
+```
+
+The daemon runs from `dist/`, not `src/`. If you skip the build step, your changes won't take effect and you may get confusing version-mismatch restarts.
+
+---
+
 ## What's deliberately NOT here
 
 - **No GraphQL** — direct PGlite queries until multi-user sync is needed

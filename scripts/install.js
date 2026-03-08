@@ -12,10 +12,9 @@
  */
 
 import { writeFileSync, mkdirSync, existsSync, readFileSync, chmodSync } from "fs";
-import { join, resolve, dirname } from "path";
+import { join, resolve, dirname, basename } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
-import { createInterface } from "readline";
 import { execSync } from "child_process";
 import { randomUUID } from "crypto";
 
@@ -23,17 +22,6 @@ const __dirname = typeof import.meta.dirname !== "undefined"
   ? import.meta.dirname : dirname(fileURLToPath(import.meta.url));
 const HOOKS_DIR = resolve(__dirname, "..");
 const CWD = process.cwd();
-
-// ── Prompt helper ──────────────────────────────────────────────────────────────
-function prompt(question) {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
 
 async function main() {
   console.log("\n🧠 Claude Project History Install\n");
@@ -100,26 +88,9 @@ async function main() {
     workflowId = readFileSync(workflowFile, "utf8").trim();
     console.log(`✓ Existing workflow ID found: ${workflowId}`);
   } else {
-    console.log(`\nYou need a workflow ID. Options:`);
-    console.log(`  a) I'll create one for you (new workflow)`);
-    console.log(`  b) Paste an existing workflow ID`);
-    const choice = await prompt("\nChoice (a/b): ");
-
-    if (choice.toLowerCase() === "a") {
-      const name = await prompt("Workflow name (e.g. 'Auth Refactor'): ");
-      // Generate a UUID locally — server will create it properly when MCP starts
-      const id = randomUUID();
-      workflowId = id;
-      console.log(`\n⚡ Workflow ID generated: ${id}`);
-      console.log(`   Run this in Claude Code to register it:`);
-      console.log(`   cph_workflow_create with name="${name}" and note the ID matches ${id}`);
-      console.log(`   (Or just start Claude Code — session_init will guide you)`);
-    } else {
-      workflowId = await prompt("Paste workflow ID: ");
-    }
-
+    workflowId = randomUUID();
     writeFileSync(workflowFile, workflowId);
-    console.log(`✓ Workflow ID saved to .cph-workflow`);
+    console.log(`✓ Workflow ID generated: ${workflowId}`);
   }
 
   // Add to .gitignore if not already there
@@ -134,35 +105,42 @@ async function main() {
 
   // ── 4. Start daemon and write .mcp.json with url transport ────────────────
   const daemonScript = join(HOOKS_DIR, "scripts", "daemon.js");
-  try {
-    execSync(`node ${daemonScript} ensure`, { stdio: "inherit" });
-    console.log(`✓ Daemon running`);
-  } catch {
-    console.log(`⚠ Could not start daemon — falling back to stdio transport`);
-  }
+  execSync(`node ${daemonScript} ensure`, { stdio: "inherit" });
 
-  // Read the port the daemon bound to
-  let daemonPort = null;
-  try {
-    const portFile = join(homedir(), ".cph", "daemon.port");
-    daemonPort = readFileSync(portFile, "utf8").trim();
-  } catch {}
+  const portFile = join(homedir(), ".cph", "daemon.port");
+  const daemonPort = readFileSync(portFile, "utf8").trim();
 
   const mcpJsonPath = join(CWD, ".mcp.json");
-  if (daemonPort) {
-    let existingMcp = {};
-    if (existsSync(mcpJsonPath)) {
-      try { existingMcp = JSON.parse(readFileSync(mcpJsonPath, "utf8")); } catch {}
+  let existingMcp = {};
+  if (existsSync(mcpJsonPath)) {
+    try { existingMcp = JSON.parse(readFileSync(mcpJsonPath, "utf8")); } catch {}
+  }
+  const mcpConfig = {
+    ...existingMcp,
+    mcpServers: {
+      ...(existingMcp.mcpServers ?? {}),
+      cph: { type: "sse", url: `http://localhost:${daemonPort}/sse` }
     }
-    const mcpConfig = {
-      ...existingMcp,
-      mcpServers: {
-        ...(existingMcp.mcpServers ?? {}),
-        cph: { url: `http://localhost:${daemonPort}/sse` }
-      }
-    };
-    writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2));
-    console.log(`✓ .mcp.json written with daemon URL (port ${daemonPort})`);
+  };
+  writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2));
+  console.log(`✓ Daemon running on port ${daemonPort}`);
+  console.log(`✓ .mcp.json written with daemon URL`);
+
+  // ── Register workflow in DB via daemon ──────────────────────────────────
+  try {
+    const res = await fetch(`http://localhost:${daemonPort}/api/workflows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: workflowId, name: basename(CWD) }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (res.ok) {
+      console.log(`✓ Workflow registered in database`);
+    } else {
+      console.log(`⚠ Workflow registration returned ${res.status} — continuing`);
+    }
+  } catch (e) {
+    console.log(`⚠ Could not register workflow in database: ${e.message}`);
   }
 
   // ── 5. CLAUDE.md snippet ───────────────────────────────────────────────────

@@ -12,9 +12,9 @@
     --surface:   #111111;
     --border:    #1e1e1e;
     --border-hi: #2a2a2a;
-    --text:      #c8c8c8;
-    --muted:     #4a4a4a;
-    --dim:       #2e2e2e;
+    --text:      #e0e0e0;
+    --muted:     #6a6a6a;
+    --dim:       #4a4a4a;
     --green:     #39d353;
     --amber:     #e3a84a;
     --red:       #e05c5c;
@@ -699,6 +699,14 @@ let AUTO_REFRESH;
 
 // ── init ─────────────────────────────────────────────────────────────────────
 async function init() {
+  const hash = window.location.hash.replace('#/', '');
+  if (hash && VALID_PANELS.includes(hash)) {
+    setPanel(hash, false);
+  }
+  window.addEventListener('popstate', () => {
+    const h = window.location.hash.replace('#/', '');
+    if (h && VALID_PANELS.includes(h)) setPanel(h, false);
+  });
   await refreshAll();
   AUTO_REFRESH = setInterval(refreshAll, 10000);
 }
@@ -734,12 +742,17 @@ async function fetchJSON(url) {
 
 // ── panel routing ─────────────────────────────────────────────────────────────
 let currentPanel = 'overview';
-function setPanel(name) {
+const VALID_PANELS = ['overview','workflows','tasks','blockers','decisions','events','insights','query'];
+
+function setPanel(name, pushState) {
+  if (pushState === undefined) pushState = true;
+  if (!VALID_PANELS.includes(name)) name = 'overview';
   currentPanel = name;
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(`panel-${name}`).classList.add('active');
   document.querySelector(`[data-panel="${name}"]`).classList.add('active');
+  if (pushState) history.pushState(null, '', '#/' + name);
   renderCurrentPanel();
 }
 
@@ -1091,11 +1104,15 @@ function truncate(s, n) {
 
 function relTime(ts) {
   if (!ts) return '—';
-  const diff = Date.now() - new Date(ts).getTime();
-  if (diff < 60000)    return 'just now';
-  if (diff < 3600000)  return Math.floor(diff/60000) + 'm ago';
-  if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
-  return Math.floor(diff/86400000) + 'd ago';
+  const d = new Date(ts);
+  const diff = Date.now() - d.getTime();
+  const rel = diff < 60000 ? 'just now'
+    : diff < 3600000  ? Math.floor(diff/60000) + 'm ago'
+    : diff < 86400000 ? Math.floor(diff/3600000) + 'h ago'
+    : Math.floor(diff/86400000) + 'd ago';
+  const local = d.toLocaleString();
+  const epoch = Math.floor(d.getTime() / 1000);
+  return `<span title="epoch: ${epoch}">${rel}<br><span style="font-size:9px;color:var(--dim)">${local}</span></span>`;
 }
 
 function emptyState(msg) {

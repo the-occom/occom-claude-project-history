@@ -1,7 +1,10 @@
 import { PGlite } from "@electric-sql/pglite";
+export declare const SCHEMA_VERSION = 3;
 export declare function getDb(): Promise<PGlite>;
 export declare function newId(): string;
 export declare class ConflictError extends Error {
+    table: string;
+    recordId: string;
     constructor(table: string, id: string);
 }
 export declare function withTransaction<T>(fn: (tx: Parameters<Parameters<PGlite["transaction"]>[0]>[0]) => Promise<T>): Promise<T>;

@@ -76,6 +76,9 @@ State machine: pending → in_progress (only valid transition from this tool)`,
             return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
         }
         catch (err) {
+            if (err instanceof ConflictError) {
+                return { content: [{ type: "text", text: JSON.stringify({ error: "conflict", table: err.table, id: err.recordId, required_action: "Call cph_context_sync, then retry" }) }], isError: true };
+            }
             const msg = err instanceof Error ? err.message : String(err);
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
@@ -134,6 +137,9 @@ Args:
             return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
         }
         catch (err) {
+            if (err instanceof ConflictError) {
+                return { content: [{ type: "text", text: JSON.stringify({ error: "conflict", table: err.table, id: err.recordId, required_action: "Call cph_context_sync, then retry" }) }], isError: true };
+            }
             const msg = err instanceof Error ? err.message : String(err);
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
@@ -147,7 +153,7 @@ Returns ID and title only for efficiency. Use cph_task_get for full details on a
 Call this only when explicitly asked — session_init already provides active tasks.`,
         inputSchema: {
             workflow_id: z.string().uuid().optional(),
-            status: z.enum(["pending", "in_progress", "blocked", "completed", "cancelled"]).optional(),
+            status: z.enum(["pending", "in_progress", "blocked", "paused", "completed", "cancelled"]).optional(),
             include_subtasks: z.boolean().default(true),
             limit: z.number().int().min(1).max(100).default(50),
             offset: z.number().int().min(0).default(0)
@@ -233,10 +239,11 @@ Call this only when explicitly asked — session_init already provides active ta
             title: z.string().min(1).max(500).optional(),
             description: z.string().max(5000).optional(),
             priority: z.enum(["low", "medium", "high", "critical"]).optional(),
+            status: z.enum(["pending", "in_progress", "blocked", "paused"]).optional(),
             estimated_minutes: z.number().int().min(1).optional()
         },
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
-    }, async ({ task_id, title, description, priority, estimated_minutes }) => {
+    }, async ({ task_id, title, description, priority, status, estimated_minutes }) => {
         try {
             const fields = ["updated_at = NOW()"];
             const values = [];
@@ -252,6 +259,10 @@ Call this only when explicitly asked — session_init already provides active ta
             if (priority !== undefined) {
                 fields.push(`priority = $${idx++}`);
                 values.push(priority);
+            }
+            if (status !== undefined) {
+                fields.push(`status = $${idx++}`);
+                values.push(status);
             }
             if (estimated_minutes !== undefined) {
                 fields.push(`estimated_minutes = $${idx++}`);
@@ -274,6 +285,9 @@ Call this only when explicitly asked — session_init already provides active ta
             return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
         }
         catch (err) {
+            if (err instanceof ConflictError) {
+                return { content: [{ type: "text", text: JSON.stringify({ error: "conflict", table: err.table, id: err.recordId, required_action: "Call cph_context_sync, then retry" }) }], isError: true };
+            }
             const msg = err instanceof Error ? err.message : String(err);
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
@@ -311,6 +325,9 @@ Args:
             return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
         }
         catch (err) {
+            if (err instanceof ConflictError) {
+                return { content: [{ type: "text", text: JSON.stringify({ error: "conflict", table: err.table, id: err.recordId, required_action: "Call cph_context_sync, then retry" }) }], isError: true };
+            }
             const msg = err instanceof Error ? err.message : String(err);
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }

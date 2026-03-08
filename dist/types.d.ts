@@ -1,5 +1,5 @@
 export type WorkflowStatus = "active" | "paused" | "completed" | "archived";
-export type TaskStatus = "pending" | "in_progress" | "blocked" | "completed" | "cancelled";
+export type TaskStatus = "pending" | "in_progress" | "blocked" | "paused" | "completed" | "cancelled";
 export type TaskPriority = "low" | "medium" | "high" | "critical";
 export type BlockerType = "dependency" | "waiting_on_human" | "technical" | "external" | "unclear_requirements" | "other";
 export type BlockerStatus = "open" | "resolved" | "escalated";

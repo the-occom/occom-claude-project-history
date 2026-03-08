@@ -1,6 +1,7 @@
 {
   "mcpServers": {
     "cph": {
+      "type": "sse",
       "url": "http://localhost:3741/sse"
     }
   }

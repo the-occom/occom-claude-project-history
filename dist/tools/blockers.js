@@ -52,6 +52,9 @@ Auto-behavior: if task_id is provided, the task status is automatically set to '
             return { content: [{ type: "text", text: JSON.stringify(blocker, null, 2) }] };
         }
         catch (err) {
+            if (err instanceof ConflictError) {
+                return { content: [{ type: "text", text: JSON.stringify({ error: "conflict", table: err.table, id: err.recordId, required_action: "Call cph_context_sync, then retry" }) }], isError: true };
+            }
             const msg = err instanceof Error ? err.message : String(err);
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
@@ -99,6 +102,9 @@ Auto-behavior: if blocker has a task_id and unblock_task=true, task is set back 
             return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
         }
         catch (err) {
+            if (err instanceof ConflictError) {
+                return { content: [{ type: "text", text: JSON.stringify({ error: "conflict", table: err.table, id: err.recordId, required_action: "Call cph_context_sync, then retry" }) }], isError: true };
+            }
             const msg = err instanceof Error ? err.message : String(err);
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }
@@ -132,6 +138,9 @@ Use when a blocker has been open too long and needs to be surfaced to stakeholde
             return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
         }
         catch (err) {
+            if (err instanceof ConflictError) {
+                return { content: [{ type: "text", text: JSON.stringify({ error: "conflict", table: err.table, id: err.recordId, required_action: "Call cph_context_sync, then retry" }) }], isError: true };
+            }
             const msg = err instanceof Error ? err.message : String(err);
             return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
         }

@@ -7,6 +7,8 @@ import { mkdirSync } from "fs";
 const DB_DIR = join(homedir(), ".cph");
 const DB_PATH = join(DB_DIR, "db");
 
+export const SCHEMA_VERSION = 3;
+
 let _db: PGlite | null = null;
 
 export async function getDb(): Promise<PGlite> {
@@ -118,11 +120,19 @@ async function migrate(db: PGlite): Promise<void> {
         'table', TG_TABLE_NAME,
         'op', TG_OP,
         'id', COALESCE(NEW.id, OLD.id),
-        'workflow_id', COALESCE(
-          CASE WHEN TG_TABLE_NAME = 'workflows' THEN COALESCE(NEW.id, OLD.id)
-               ELSE COALESCE(NEW.workflow_id, OLD.workflow_id) END,
-          'unknown'
-        )
+        'workflow_id', COALESCE(NEW.workflow_id, OLD.workflow_id, 'unknown')
+      )::text);
+      RETURN COALESCE(NEW, OLD);
+    END;
+    $$ LANGUAGE plpgsql;
+
+    CREATE OR REPLACE FUNCTION cph_notify_workflow_change() RETURNS trigger AS $$
+    BEGIN
+      PERFORM pg_notify('cph_changes', json_build_object(
+        'table', TG_TABLE_NAME,
+        'op', TG_OP,
+        'id', COALESCE(NEW.id, OLD.id),
+        'workflow_id', COALESCE(NEW.id, OLD.id)
       )::text);
       RETURN COALESCE(NEW, OLD);
     END;
@@ -146,7 +156,7 @@ async function migrate(db: PGlite): Promise<void> {
     DROP TRIGGER IF EXISTS trg_workflows_changes ON workflows;
     CREATE TRIGGER trg_workflows_changes
       AFTER INSERT OR UPDATE OR DELETE ON workflows
-      FOR EACH ROW EXECUTE FUNCTION cph_notify_change();
+      FOR EACH ROW EXECUTE FUNCTION cph_notify_workflow_change();
   `);
 }
 
@@ -155,11 +165,16 @@ export function newId(): string {
 }
 
 export class ConflictError extends Error {
+  table: string;
+  recordId: string;
+
   constructor(table: string, id: string) {
     super(
-      `Conflict: ${table} ${id} was modified by another session. Call cph_context_sync to get current state.`
+      `Conflict: ${table} ${id} was modified by another session. REQUIRED: Call cph_context_sync to get current state, then retry.`
     );
     this.name = "ConflictError";
+    this.table = table;
+    this.recordId = id;
   }
 }
 

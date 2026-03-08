@@ -3,7 +3,7 @@
  * Claude Project History PreToolUse Hook — enforce-task.js
  *
  * Fires before every Write, Edit, or MultiEdit tool call in Claude Code.
- * Reads stdin for the hook payload, checks PGlite for an active task,
+ * Reads stdin for the hook payload, checks the daemon for an active task,
  * and exits non-zero to BLOCK the tool call if none exists.
  *
  * Claude Code hook contract:
@@ -14,15 +14,24 @@
  * Setup: .claude/settings.json PreToolUse hook on Write|Edit|MultiEdit
  */
 
-import { PGlite } from "@electric-sql/pglite";
-import { execSync } from "child_process";
-import { join, resolve, dirname } from "path";
+import { join, dirname } from "path";
 import { homedir } from "os";
-import { readFileSync, existsSync } from "fs";
+import { readFileSync } from "fs";
+import { execFileSync } from "child_process";
 import { fileURLToPath } from "url";
 
-const DB_PATH = join(homedir(), ".cph", "db");
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const DAEMON_SCRIPT = join(__dirname, "..", "scripts", "daemon.js");
 const WORKFLOW_ID_FILE = join(process.cwd(), ".cph-workflow");
+
+function ensureDaemon() {
+  try {
+    execFileSync(process.execPath, [DAEMON_SCRIPT, "ensure"], {
+      stdio: "ignore", timeout: 10_000,
+    });
+  } catch {}
+}
 
 async function main() {
   // Read hook payload from stdin
@@ -31,7 +40,6 @@ async function main() {
     const raw = readFileSync("/dev/stdin", "utf8");
     payload = JSON.parse(raw);
   } catch {
-    // No payload or parse error — allow through
     process.exit(0);
   }
 
@@ -41,56 +49,48 @@ async function main() {
     process.exit(0);
   }
 
-  // Resolve workflow ID — from .cph-workflow file or env
+  // Resolve workflow ID
   let workflowId = null;
   try {
     workflowId = readFileSync(WORKFLOW_ID_FILE, "utf8").trim();
   } catch {
-    // File doesn't exist — can't enforce without knowing the workflow
     process.exit(0);
   }
 
   if (!workflowId) process.exit(0);
 
-  // Ensure daemon is running (auto-start on first use)
-  const __hook_dirname = typeof import.meta.dirname !== "undefined"
-    ? import.meta.dirname : dirname(fileURLToPath(import.meta.url));
-  const daemonScript = resolve(__hook_dirname, "..", "scripts", "daemon.js");
-  if (existsSync(daemonScript)) {
-    try { execSync(`node ${daemonScript} ensure`, { stdio: "ignore" }); } catch {}
+  // Read daemon port
+  let daemonPort;
+  try {
+    daemonPort = readFileSync(join(homedir(), ".cph", "daemon.port"), "utf8").trim();
+  } catch {
+    process.exit(0); // No daemon — fail open
   }
 
-  // Check for active task in PGlite
-  let db = null;
+  // Ensure daemon is running before checking
+  ensureDaemon();
+
+  // Check active tasks via daemon
   try {
-    db = new PGlite(DB_PATH);
-
-    const result = await db.query(
-      `SELECT COUNT(*) as count
-       FROM tasks
-       WHERE workflow_id = $1
-         AND status = 'in_progress'`,
-      [workflowId]
+    const res = await fetch(
+      `http://localhost:${daemonPort}/hooks/active-tasks?workflow_id=${encodeURIComponent(workflowId)}`,
+      { signal: AbortSignal.timeout(2000) }
     );
+    if (!res.ok) process.exit(0);
+    const data = await res.json();
 
-    const activeCount = parseInt(result.rows[0]?.count ?? "0");
-
-    if (activeCount === 0) {
-      // Block the write
+    if (data.count === 0) {
       console.log(
         "Claude Project History: No active task. Call cph_task_create then cph_task_start before writing files."
       );
       process.exit(2);
     }
 
-    // Allow
     process.exit(0);
   } catch {
-    // DB not accessible — don't block, fail open
+    // Daemon unreachable — fail open
     process.exit(0);
-  } finally {
-    // PGlite doesn't have a close method in all versions — just let it GC
   }
 }
 
-main().catch(() => process.exit(0)); // Always fail open on error
+main().catch(() => process.exit(0));

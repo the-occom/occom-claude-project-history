@@ -32,7 +32,8 @@
     "daemon:start": "node scripts/daemon.js start",
     "daemon:stop": "node scripts/daemon.js stop",
     "daemon:status": "node scripts/daemon.js status",
-    "daemon:restart": "node scripts/daemon.js restart"
+    "daemon:restart": "node scripts/daemon.js restart",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.0",

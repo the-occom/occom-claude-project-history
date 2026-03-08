@@ -37,6 +37,20 @@ unless the user explicitly asks. Pull individual records on demand with their ID
     }, async ({ workflow_id, cwd, depth }) => {
         try {
             const db = await getDb();
+            // Fix 5: Check workflow existence before proceeding
+            const workflow = await findOne(db, `SELECT id, name, status FROM workflows WHERE id = $1`, [workflow_id]);
+            if (!workflow) {
+                return {
+                    content: [{
+                            type: "text",
+                            text: JSON.stringify({
+                                status: "no_workflow",
+                                message: `Workflow ${workflow_id} not found. It may not have been created yet.`,
+                                action: "Call cph_workflow_create to create a workflow, or cph_detect_workflow to find an existing one."
+                            }, null, 2)
+                        }]
+                };
+            }
             const gitContext = getGitContext(cwd);
             let resolvedDepth = depth;
             if (gitContext.engineer_id) {

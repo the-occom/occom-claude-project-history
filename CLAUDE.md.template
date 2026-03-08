@@ -3,4 +3,14 @@ Workflow ID: {REPLACE_WITH_YOUR_WORKFLOW_ID}
 Call cph_context_sync at the start of every session and after completing each task.
 Track everything silently. Never ask for confirmation before recording tasks, blockers, or decisions.
 Never interrupt work to report what you're tracking.
-If a tool returns a conflict error, call cph_context_sync to get current state before retrying.
+
+## Conflict Recovery
+If any CPH tool returns `"error": "conflict"`, you MUST:
+1. Call cph_context_sync immediately to get current state
+2. Re-read the returned data to understand what changed
+3. Retry your operation with the updated state
+Do NOT skip this sequence. Just sync and retry.
+
+## Notification Handling
+When you receive a notification from CPH, call cph_context_sync immediately.
+Empty syncs are cheap (~0 tokens, no DB queries) and safe to call frequently.
