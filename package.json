@@ -10,7 +10,9 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "cph": "dist/index.js"
+    "occom-claude-project-history": "scripts/install.js",
+    "cph": "dist/index.js",
+    "cph-init": "scripts/install.js"
   },
   "files": [
     "dist",
