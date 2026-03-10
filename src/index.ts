@@ -12,17 +12,23 @@ import { registerWorkflowTools } from "./tools/workflows.js";
 import { registerTaskTools } from "./tools/tasks.js";
 import { registerBlockerTools } from "./tools/blockers.js";
 import { registerDecisionTools } from "./tools/decisions.js";
-import { getDb, SCHEMA_VERSION } from "./db.js";
+import { registerThinkingTools } from "./tools/thinking.js";
+import {
+  onUserPrompt, onPreToolUse, onPostToolUse,
+  onPostToolUseFailure, sealTurnThinking,
+} from "./thinking.js";
+import { getDb, SCHEMA_VERSION, newId, PRIORITY_ORDER } from "./db.js";
+import type { PGlite } from "@electric-sql/pglite";
 import { bus } from "./services/notify.js";
 import { unregisterSession } from "./services/context.js";
 import { createDebugRouter } from "./debug/router.js";
 
-const PKG_VERSION = "0.3.0";
+const PKG_VERSION = "0.5.0";
 
 function createServer(sessionId: string = "stdio"): McpServer {
   const server = new McpServer({
     name: "occom-claude-project-history",
-    version: "0.3.0"
+    version: "0.5.0"
   });
 
   registerSessionTools(server, sessionId);
@@ -30,6 +36,7 @@ function createServer(sessionId: string = "stdio"): McpServer {
   registerTaskTools(server);
   registerBlockerTools(server);
   registerDecisionTools(server);
+  registerThinkingTools(server);
 
   return server;
 }
@@ -75,6 +82,9 @@ async function main(): Promise<void> {
         sessions.delete(transport.sessionId);
       });
       await server.connect(transport);
+      try {
+        await server.sendLoggingMessage({ level: "info", data: `cph v${PKG_VERSION} (schema v${SCHEMA_VERSION})` });
+      } catch {}
     });
 
     app.post("/message", express.json(), async (req, res) => {
@@ -131,6 +141,85 @@ async function main(): Promise<void> {
       }
     });
 
+    // ── Context injection for UserPromptSubmit hook ─────────────────────────
+    app.get("/hooks/context-inject", async (req, res) => {
+      try {
+        const wid = req.query.workflow_id as string;
+        const sid = req.query.session_id as string;
+
+        if (!wid) {
+          res.type("text/plain").send(
+            "[cph] No workflow detected for this project.\nCall cph_workflow_create to set up project memory."
+          );
+          return;
+        }
+
+        const [workflowResult, tasksResult, blockersResult, decisionsResult, sessionInitResult] = await Promise.all([
+          db.query<{ name: string; status: string }>(
+            `SELECT name, status FROM workflows WHERE id = $1`, [wid]
+          ),
+          db.query<{ title: string; status: string }>(
+            `SELECT title, status FROM tasks WHERE workflow_id = $1 AND status IN ('in_progress', 'pending')
+             ORDER BY CASE status WHEN 'in_progress' THEN 0 WHEN 'pending' THEN 1 END,
+             ${PRIORITY_ORDER}
+             LIMIT 5`, [wid]
+          ),
+          db.query<{ title: string; blocker_type: string }>(
+            `SELECT title, blocker_type FROM blockers WHERE workflow_id = $1 AND status = 'open'
+             ORDER BY opened_at ASC LIMIT 3`, [wid]
+          ),
+          db.query<{ title: string }>(
+            `SELECT title FROM decisions WHERE workflow_id = $1 ORDER BY created_at DESC LIMIT 3`, [wid]
+          ),
+          sid
+            ? db.query<{ found: number }>(
+                `SELECT 1 as found FROM tool_events WHERE session_id = $1 AND tool_name LIKE '%session_init%' LIMIT 1`, [sid]
+              )
+            : Promise.resolve({ rows: [] }),
+        ]);
+
+        const workflow = workflowResult.rows[0];
+        if (!workflow) {
+          res.type("text/plain").send(
+            "[cph] No workflow detected for this project.\nCall cph_workflow_create to set up project memory."
+          );
+          return;
+        }
+
+        const sessionInitialized = sessionInitResult.rows.length > 0;
+        const activeTasks = tasksResult.rows.filter(t => t.status === "in_progress");
+        const pendingTasks = tasksResult.rows.filter(t => t.status === "pending");
+
+        const lines: string[] = [];
+        lines.push(`[cph] ${workflow.name} (${workflow.status})`);
+
+        if (activeTasks.length > 0) {
+          lines.push(`Active: ${activeTasks.map(t => t.title).join(", ")}`);
+        } else {
+          lines.push("Active: none");
+        }
+
+        if (pendingTasks.length > 0) {
+          lines.push(`Up next: ${pendingTasks.map(t => t.title).join(", ")}`);
+        }
+
+        if (blockersResult.rows.length > 0) {
+          lines.push(`Blockers: ${blockersResult.rows.map(b => `${b.title} [${b.blocker_type}]`).join(", ")}`);
+        }
+
+        if (!sessionInitialized) {
+          if (decisionsResult.rows.length > 0) {
+            lines.push(`Recent decisions: ${decisionsResult.rows.map(d => d.title).join(", ")}`);
+          }
+          lines.push("Call cph_session_init for full context.");
+        }
+
+        res.type("text/plain").send(lines.join("\n"));
+      } catch {
+        res.type("text/plain").send("");
+      }
+    });
+
     app.post("/hooks/attach-commit", express.json(), async (req, res) => {
       try {
         const { workflow_id, commit_hash, diff_stat } = req.body;
@@ -151,7 +240,7 @@ async function main(): Promise<void> {
 
     app.post("/hooks/task-complete", express.json(), async (req, res) => {
       try {
-        const { task_id } = req.body;
+        const { task_id, actual_minutes, completion_notes } = req.body;
         if (!task_id) { res.status(400).json({ error: "task_id required" }); return; }
         const { rows } = await db.query<{ status: string; updated_at: string }>(
           `SELECT status, updated_at FROM tasks WHERE id = $1`, [task_id]
@@ -162,9 +251,11 @@ async function main(): Promise<void> {
           return;
         }
         await db.query(
-          `UPDATE tasks SET status = 'completed', completed_at = NOW(), updated_at = NOW()
+          `UPDATE tasks SET status = 'completed', completed_at = NOW(), updated_at = NOW(),
+           actual_minutes = COALESCE($3, actual_minutes),
+           completion_notes = COALESCE($4, completion_notes)
            WHERE id = $1 AND updated_at = $2`,
-          [task_id, rows[0].updated_at]
+          [task_id, rows[0].updated_at, actual_minutes ?? null, completion_notes ?? null]
         );
         res.json({ ok: true, task_id, status: "completed" });
       } catch (e: any) {
@@ -192,6 +283,18 @@ async function main(): Promise<void> {
         res.json({ ok: true, task_id, status: "cancelled" });
       } catch (e: any) {
         res.status(500).json({ error: e.message });
+      }
+    });
+
+    // ── Observability dispatcher endpoint ─────────────────────────────────
+    app.post("/hooks/event", express.json(), async (req, res) => {
+      const { event, session_id, workflow_id, timestamp, ...data } = req.body;
+      res.json({ ok: true });
+
+      try {
+        await routeEvent(event, session_id, workflow_id, timestamp, data);
+      } catch (err) {
+        process.stderr.write(`[cph] event routing error: ${err}\n`);
       }
     });
 
@@ -234,6 +337,184 @@ async function main(): Promise<void> {
     await server.connect(transport);
     console.error("[cph] MCP server running. DB at ~/.cph/db");
   }
+}
+
+// ── Observability helpers ──────────────────────────────────────────────────────
+
+interface TodoItem {
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+}
+
+async function routeEvent(
+  event: string,
+  sessionId: string,
+  workflowId: string | null,
+  timestamp: string,
+  data: Record<string, unknown>
+) {
+  const db = await getDb();
+
+  switch (event) {
+
+    case "SessionStart":
+      await db.query(
+        `INSERT INTO sessions (id, workflow_id, model, agent_type, source, started_at)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (id) DO NOTHING`,
+        [sessionId, workflowId, data.model, data.agent_type, data.source, timestamp]
+      );
+      if (workflowId) {
+        await db.query(
+          `UPDATE workflows SET last_planning_started_at = $1 WHERE id = $2`,
+          [timestamp, workflowId]
+        );
+      }
+      break;
+
+    case "SessionEnd":
+      await db.query(
+        `UPDATE sessions SET ended_at = $1, exit_reason = $2 WHERE id = $3`,
+        [timestamp, data.exit_reason, sessionId]
+      );
+      break;
+
+    case "UserPromptSubmit":
+      onUserPrompt(sessionId, timestamp);
+      break;
+
+    case "PreToolUse":
+      if (data.tool_name === "TodoWrite" && data.todos) {
+        await syncTodos(sessionId, workflowId, data.todos as TodoItem[], timestamp, db);
+      }
+      if (["Write", "Edit", "MultiEdit"].includes(data.tool_name as string)) {
+        await maybeSealPlanPhase(workflowId, timestamp, db);
+      }
+      await onPreToolUse(sessionId, workflowId, data, timestamp, db);
+      break;
+
+    case "PostToolUse":
+      await onPostToolUse(sessionId, data, timestamp, db);
+      break;
+
+    case "PostToolUseFailure":
+      await db.query(
+        `INSERT INTO tool_events
+         (id, session_id, workflow_id, phase, tool_name, error_type, interrupted, created_at)
+         VALUES ($1,$2,$3,'failure',$4,$5,$6,$7)`,
+        [newId(), sessionId, workflowId, data.tool_name, data.error_type, data.interrupted, timestamp]
+      );
+      onPostToolUseFailure(sessionId, timestamp);
+      break;
+
+    case "Stop":
+      await sealTurnThinking(sessionId, workflowId, timestamp, db);
+      break;
+
+    case "SubagentStart":
+      await db.query(
+        `INSERT INTO subagents (id, session_id, workflow_id, agent_type, prompt_len, started_at)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [data.agent_id, sessionId, workflowId, data.agent_type, data.prompt_len, timestamp]
+      );
+      break;
+
+    case "SubagentStop":
+      await db.query(
+        `UPDATE subagents
+         SET ended_at = $1,
+             files_created = $2,
+             files_edited  = $3,
+             files_deleted = $4
+         WHERE id = $5`,
+        [timestamp,
+         JSON.stringify(data.files_created),
+         JSON.stringify(data.files_edited),
+         JSON.stringify(data.files_deleted),
+         data.agent_id]
+      );
+      break;
+
+    case "PreCompact":
+      await db.query(
+        `INSERT INTO compaction_events (id, session_id, workflow_id, trigger, created_at)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [newId(), sessionId, workflowId, data.trigger, timestamp]
+      );
+      break;
+
+    default:
+      await db.query(
+        `INSERT INTO tool_events (id, session_id, workflow_id, phase, tool_name, created_at)
+         VALUES ($1,$2,$3,'signal',$4,$5)`,
+        [newId(), sessionId, workflowId, event, timestamp]
+      );
+  }
+}
+
+async function syncTodos(
+  sessionId: string,
+  workflowId: string | null,
+  todos: TodoItem[],
+  timestamp: string,
+  db: PGlite
+) {
+  if (!workflowId) return;
+
+  for (const todo of todos) {
+    const existing = await db.query<{ id: string; status: string }>(
+      `SELECT id, status FROM tasks
+       WHERE session_id = $1 AND title = $2 AND from_plan = true`,
+      [sessionId, todo.content]
+    );
+
+    if (existing.rows.length === 0) {
+      await db.query(
+        `INSERT INTO tasks
+         (id, workflow_id, session_id, title, status, from_plan, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,true,$6,$6)`,
+        [newId(), workflowId, sessionId, todo.content,
+         mapTodoStatus(todo.status), timestamp]
+      );
+    } else {
+      const row = existing.rows[0];
+      const newStatus = mapTodoStatus(todo.status);
+      if (row.status !== newStatus) {
+        await db.query(
+          `UPDATE tasks SET status = $1, updated_at = $2 WHERE id = $3`,
+          [newStatus, timestamp, row.id]
+        );
+        if (newStatus === "in_progress") {
+          await db.query(`UPDATE tasks SET started_at = $1 WHERE id = $2 AND started_at IS NULL`,
+            [timestamp, row.id]);
+        }
+        if (newStatus === "completed") {
+          await db.query(`UPDATE tasks SET completed_at = $1 WHERE id = $2`,
+            [timestamp, row.id]);
+        }
+      }
+    }
+  }
+}
+
+function mapTodoStatus(s: string): string {
+  return s === "completed" ? "completed"
+       : s === "in_progress" ? "in_progress"
+       : "pending";
+}
+
+async function maybeSealPlanPhase(
+  workflowId: string | null,
+  timestamp: string,
+  db: PGlite
+) {
+  if (!workflowId) return;
+  // Only seal once — clear last_planning_started_at on first write
+  await db.query(
+    `UPDATE workflows SET last_planning_started_at = NULL
+     WHERE id = $1 AND last_planning_started_at IS NOT NULL`,
+    [workflowId]
+  );
 }
 
 main().catch((error: unknown) => {

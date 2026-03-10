@@ -5,7 +5,7 @@ import { homedir } from "os";
 import { mkdirSync } from "fs";
 const DB_DIR = join(homedir(), ".cph");
 const DB_PATH = join(DB_DIR, "db");
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 5;
 let _db = null;
 export async function getDb() {
     if (_db)
@@ -150,6 +150,117 @@ async function migrate(db) {
     CREATE TRIGGER trg_workflows_changes
       AFTER INSERT OR UPDATE OR DELETE ON workflows
       FOR EACH ROW EXECUTE FUNCTION cph_notify_workflow_change();
+  `);
+    // v0.4.0 — observability tables
+    await db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id           TEXT PRIMARY KEY,
+      workflow_id  TEXT REFERENCES workflows(id) ON DELETE SET NULL,
+      model        TEXT,
+      agent_type   TEXT,
+      source       TEXT,
+      started_at   TIMESTAMPTZ,
+      ended_at     TIMESTAMPTZ,
+      exit_reason  TEXT,
+      created_at   TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS tool_events (
+      id           TEXT PRIMARY KEY,
+      session_id   TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+      workflow_id  TEXT REFERENCES workflows(id) ON DELETE SET NULL,
+      phase        TEXT NOT NULL,
+      tool_name    TEXT NOT NULL,
+      file_path    TEXT,
+      command      TEXT,
+      duration_ms  INTEGER,
+      exit_code    INTEGER,
+      error_type   TEXT,
+      interrupted  BOOLEAN,
+      created_at   TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tool_events_session    ON tool_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_tool_events_workflow   ON tool_events(workflow_id);
+    CREATE INDEX IF NOT EXISTS idx_tool_events_tool       ON tool_events(tool_name);
+    CREATE INDEX IF NOT EXISTS idx_tool_events_created_at ON tool_events(created_at);
+
+    CREATE TABLE IF NOT EXISTS subagents (
+      id             TEXT PRIMARY KEY,
+      session_id     TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+      workflow_id    TEXT REFERENCES workflows(id) ON DELETE SET NULL,
+      agent_type     TEXT,
+      prompt_len     INTEGER,
+      files_created  TEXT DEFAULT '[]',
+      files_edited   TEXT DEFAULT '[]',
+      files_deleted  TEXT DEFAULT '[]',
+      started_at     TIMESTAMPTZ,
+      ended_at       TIMESTAMPTZ,
+      created_at     TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS compaction_events (
+      id          TEXT PRIMARY KEY,
+      session_id  TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+      workflow_id TEXT REFERENCES workflows(id) ON DELETE SET NULL,
+      trigger     TEXT,
+      created_at  TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL;
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS from_plan BOOLEAN NOT NULL DEFAULT FALSE;
+    CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
+
+    ALTER TABLE workflows ADD COLUMN IF NOT EXISTS last_planning_started_at TIMESTAMPTZ;
+  `);
+    // v0.5.0 — thinking time inference tables
+    await db.exec(`
+    ALTER TABLE tool_events ADD COLUMN IF NOT EXISTS pre_timestamp  TIMESTAMPTZ;
+    ALTER TABLE tool_events ADD COLUMN IF NOT EXISTS post_timestamp TIMESTAMPTZ;
+    ALTER TABLE tool_events ADD COLUMN IF NOT EXISTS execution_ms   INTEGER;
+    ALTER TABLE tool_events ADD COLUMN IF NOT EXISTS gap_after_ms   INTEGER;
+
+    CREATE TABLE IF NOT EXISTS thinking_estimates (
+      id                TEXT PRIMARY KEY,
+      session_id        TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      workflow_id       TEXT REFERENCES workflows(id) ON DELETE SET NULL,
+      turn_number       INTEGER NOT NULL,
+      initial_gap_ms    INTEGER,
+      interleaved_ms    INTEGER NOT NULL DEFAULT 0,
+      total_tool_ms     INTEGER NOT NULL DEFAULT 0,
+      total_wall_ms     INTEGER NOT NULL DEFAULT 0,
+      gap_count         INTEGER NOT NULL DEFAULT 0,
+      prompt_timestamp  TIMESTAMPTZ NOT NULL,
+      stop_timestamp    TIMESTAMPTZ NOT NULL,
+      created_at        TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_thinking_session  ON thinking_estimates(session_id);
+    CREATE INDEX IF NOT EXISTS idx_thinking_workflow ON thinking_estimates(workflow_id);
+
+    CREATE TABLE IF NOT EXISTS tool_baselines (
+      tool_name     TEXT PRIMARY KEY,
+      avg_ms        INTEGER NOT NULL DEFAULT 0,
+      p50_ms        INTEGER NOT NULL DEFAULT 0,
+      p95_ms        INTEGER NOT NULL DEFAULT 0,
+      sample_count  INTEGER NOT NULL DEFAULT 0,
+      updated_at    TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Seed baselines for common tools
+    INSERT INTO tool_baselines (tool_name, avg_ms, p50_ms, p95_ms, sample_count)
+    VALUES
+      ('Read',      50,  30,  150,  0),
+      ('Write',    100,  60,  300,  0),
+      ('Edit',      80,  50,  250,  0),
+      ('Glob',      40,  25,  120,  0),
+      ('Grep',      60,  35,  200,  0),
+      ('Bash',     500, 200, 3000,  0),
+      ('Agent',   5000,3000,15000,  0),
+      ('TodoWrite', 30,  20,   80,  0),
+      ('MultiEdit',100,  60,  350,  0),
+      ('WebSearch',800, 500, 3000,  0)
+    ON CONFLICT (tool_name) DO NOTHING;
   `);
 }
 export function newId() {

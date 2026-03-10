@@ -32,7 +32,9 @@ async function main() {
   mkdirSync(claudeDir, { recursive: true });
 
   const hookScript = join(HOOKS_DIR, "hooks", "enforce-task.js");
+  const contextInjectScript = join(HOOKS_DIR, "hooks", "context-inject.js");
   const sessionEndScript = join(HOOKS_DIR, "hooks", "session-end.js");
+  const dispatcherScript = join(HOOKS_DIR, "hooks", "dispatcher.js");
 
   let existingSettings = {};
   if (existsSync(settingsPath)) {
@@ -41,27 +43,78 @@ async function main() {
     } catch {}
   }
 
+  // Helper: filter out old dispatcher entries from an event's hook array
+  const withoutDispatcher = (arr) =>
+    (arr ?? []).filter((h) => !h.hooks?.some?.((hh) => hh.command?.includes("dispatcher")));
+
+  const dispatcherEntry = (matcher) => matcher
+    ? { matcher, hooks: [{ type: "command", command: `node ${dispatcherScript}` }] }
+    : { hooks: [{ type: "command", command: `node ${dispatcherScript}` }] };
+
+  const existingHooks = existingSettings.hooks ?? {};
+
   const newSettings = {
     ...existingSettings,
     hooks: {
-      ...(existingSettings.hooks ?? {}),
+      ...existingHooks,
+      SessionStart: [
+        ...withoutDispatcher(existingHooks.SessionStart),
+        dispatcherEntry(),
+      ],
+      SessionEnd: [
+        ...withoutDispatcher(existingHooks.SessionEnd),
+        dispatcherEntry(),
+      ],
+      UserPromptSubmit: [
+        ...withoutDispatcher(existingHooks.UserPromptSubmit).filter(
+          (h) => !h.hooks?.some?.((hh) => hh.command?.includes("context-inject"))
+        ),
+        { hooks: [{ type: "command", command: `node ${contextInjectScript}` }] },
+        dispatcherEntry(),
+      ],
       PreToolUse: [
-        ...((existingSettings.hooks?.PreToolUse ?? []).filter(
+        ...withoutDispatcher(existingHooks.PreToolUse).filter(
           (h) => !h.hooks?.some?.((hh) => hh.command?.includes("enforce-task"))
-        )),
+        ),
         {
           matcher: "Write|Edit|MultiEdit",
           hooks: [{ type: "command", command: `node ${hookScript}` }]
-        }
+        },
+        dispatcherEntry(".*"),
+      ],
+      PostToolUse: [
+        ...withoutDispatcher(existingHooks.PostToolUse),
+        dispatcherEntry(".*"),
+      ],
+      PostToolUseFailure: [
+        ...withoutDispatcher(existingHooks.PostToolUseFailure),
+        dispatcherEntry(),
       ],
       Stop: [
-        ...((existingSettings.hooks?.Stop ?? []).filter(
+        ...withoutDispatcher(existingHooks.Stop).filter(
           (h) => !h.hooks?.some?.((hh) => hh.command?.includes("session-end"))
-        )),
+        ),
         {
           hooks: [{ type: "command", command: `node ${sessionEndScript}` }]
-        }
-      ]
+        },
+        dispatcherEntry(),
+      ],
+      SubagentStart: [
+        ...withoutDispatcher(existingHooks.SubagentStart),
+        dispatcherEntry(),
+      ],
+      SubagentStop: [
+        ...withoutDispatcher(existingHooks.SubagentStop),
+        dispatcherEntry(),
+      ],
+      PreCompact: [
+        ...withoutDispatcher(existingHooks.PreCompact),
+        dispatcherEntry(),
+      ],
+      Notification: [
+        ...withoutDispatcher(existingHooks.Notification),
+        dispatcherEntry(),
+      ],
     }
   };
 

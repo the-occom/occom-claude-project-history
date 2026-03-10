@@ -525,6 +525,91 @@
   .scrollable::-webkit-scrollbar { width: 4px; }
   .scrollable::-webkit-scrollbar-track { background: var(--bg); }
   .scrollable::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 2px; }
+
+  /* ── clickable rows ── */
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover { background: rgba(74,158,255,0.04); }
+
+  /* ── task detail ── */
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 11px;
+    cursor: pointer;
+    margin-bottom: 16px;
+    transition: color 0.15s;
+  }
+  .back-link:hover { color: var(--green); }
+
+  .detail-header { margin-bottom: 24px; }
+  .detail-title {
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+  .detail-id {
+    font-size: 10px;
+    color: var(--dim);
+    font-family: var(--mono);
+    user-select: all;
+  }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .detail-field {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 12px 14px;
+    border-radius: 3px;
+  }
+
+  .detail-field-label {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .detail-field-value {
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .detail-section {
+    margin-bottom: 24px;
+  }
+
+  .detail-section-title {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .detail-text-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 14px 16px;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 </style>
 </head>
 <body>
@@ -564,8 +649,17 @@
     </div>
     <div class="nav-section">
       <div class="nav-label">telemetry</div>
+      <div class="nav-item" onclick="setPanel('sessions')" data-panel="sessions">
+        sessions <span class="nav-count" id="nc-sessions">—</span>
+      </div>
+      <div class="nav-item" onclick="setPanel('timeline')" data-panel="timeline">
+        timeline <span class="nav-count" id="nc-timeline">—</span>
+      </div>
       <div class="nav-item" onclick="setPanel('events')" data-panel="events">
         events <span class="nav-count" id="nc-events">—</span>
+      </div>
+      <div class="nav-item" onclick="setPanel('thinking')" data-panel="thinking">
+        thinking <span class="nav-count" id="nc-thinking">—</span>
       </div>
       <div class="nav-item" onclick="setPanel('insights')" data-panel="insights">
         insights
@@ -626,6 +720,13 @@
       <div id="tasks-table"></div>
     </div>
 
+    <!-- TASK DETAIL -->
+    <div class="panel" id="panel-task-detail">
+      <div id="task-detail-content">
+        <div class="loading"><div class="spinner"></div> loading task…</div>
+      </div>
+    </div>
+
     <!-- BLOCKERS -->
     <div class="panel" id="panel-blockers">
       <div class="panel-header">
@@ -661,12 +762,43 @@
       <div class="table-wrap scrollable" id="events-log"></div>
     </div>
 
+    <!-- SESSIONS -->
+    <div class="panel" id="panel-sessions">
+      <div class="panel-header">
+        <div class="panel-title">sessions <span id="session-count"></span></div>
+      </div>
+      <div id="sessions-table"></div>
+    </div>
+
+    <!-- TIMELINE -->
+    <div class="panel" id="panel-timeline">
+      <div class="panel-header">
+        <div class="panel-title">timeline <span>most recent session</span></div>
+      </div>
+      <div id="timeline-log"></div>
+    </div>
+
     <!-- INSIGHTS -->
     <div class="panel" id="panel-insights">
       <div class="panel-header">
         <div class="panel-title">insights <span>gradient summary</span></div>
       </div>
       <div class="insights-grid" id="insights-grid"></div>
+    </div>
+
+    <!-- THINKING -->
+    <div class="panel" id="panel-thinking">
+      <div class="panel-header">
+        <div class="panel-title">thinking <span>inferred from tool gaps</span></div>
+      </div>
+      <div id="thinking-stats" style="margin-bottom:16px"></div>
+      <div id="thinking-turns"></div>
+      <div id="thinking-baselines" style="margin-top:16px"></div>
+      <div style="color:var(--dim);font-size:10px;margin-top:12px;line-height:1.6;max-width:600px">
+        Thinking time is inferred from gaps between tool calls. It includes network latency,
+        user approval wait time, and non-tool processing. Actual extended thinking time may differ.
+        Baselines improve with more data (min 3 samples per tool).
+      </div>
     </div>
 
     <!-- SQL QUERY -->
@@ -683,7 +815,7 @@
         <div id="query-result" class="query-result" style="display:none"></div>
       </div>
       <div style="color:var(--muted);font-size:11px;line-height:2">
-        <div>tables: <span style="color:var(--text)">workflows, tasks, blockers, decisions, engineer_preferences, events</span></div>
+        <div>tables: <span style="color:var(--text)">workflows, tasks, blockers, decisions, sessions, tool_events, subagents, compaction_events, engineer_preferences, thinking_estimates, tool_baselines</span></div>
         <div style="margin-top:4px;color:var(--dim)">read-only — SELECT only, mutations blocked</div>
       </div>
     </div>
@@ -694,18 +826,26 @@
 <script>
 // ── config ──────────────────────────────────────────────────────────────────
 const API = `http://localhost:3742/api`;
-let DB = { workflows: [], tasks: [], blockers: [], decisions: [], events: [] };
+let DB = { workflows: [], tasks: [], blockers: [], decisions: [], events: [], sessions: [], tool_events: [], thinking_estimates: [], tool_baselines: [] };
 let AUTO_REFRESH;
 
 // ── init ─────────────────────────────────────────────────────────────────────
-async function init() {
+function parseHash() {
   const hash = window.location.hash.replace('#/', '');
-  if (hash && VALID_PANELS.includes(hash)) {
-    setPanel(hash, false);
+  if (hash.startsWith('task/')) {
+    currentTaskId = hash.slice(5);
+    return 'task-detail';
   }
+  if (VALID_PANELS.includes(hash)) return hash;
+  return null;
+}
+
+async function init() {
+  const panel = parseHash();
+  if (panel) setPanel(panel, false);
   window.addEventListener('popstate', () => {
-    const h = window.location.hash.replace('#/', '');
-    if (h && VALID_PANELS.includes(h)) setPanel(h, false);
+    const p = parseHash();
+    if (p) setPanel(p, false);
   });
   await refreshAll();
   AUTO_REFRESH = setInterval(refreshAll, 10000);
@@ -722,6 +862,7 @@ async function refreshAll() {
     document.getElementById('conn-status').className = 'status-pill ok';
     document.getElementById('conn-status').textContent = 'connected';
     DB = data;
+    DB.events = DB.events || [];
     updateCounts();
     renderCurrentPanel();
     document.getElementById('last-refresh').textContent =
@@ -742,7 +883,8 @@ async function fetchJSON(url) {
 
 // ── panel routing ─────────────────────────────────────────────────────────────
 let currentPanel = 'overview';
-const VALID_PANELS = ['overview','workflows','tasks','blockers','decisions','events','insights','query'];
+let currentTaskId = null;
+const VALID_PANELS = ['overview','workflows','tasks','blockers','decisions','sessions','timeline','events','thinking','insights','query','task-detail'];
 
 function setPanel(name, pushState) {
   if (pushState === undefined) pushState = true;
@@ -751,17 +893,31 @@ function setPanel(name, pushState) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(`panel-${name}`).classList.add('active');
-  document.querySelector(`[data-panel="${name}"]`).classList.add('active');
-  if (pushState) history.pushState(null, '', '#/' + name);
+  const navEl = document.querySelector(`[data-panel="${name}"]`);
+  if (navEl) navEl.classList.add('active');
+  if (pushState) {
+    if (name === 'task-detail' && currentTaskId) {
+      history.pushState(null, '', '#/task/' + currentTaskId);
+    } else {
+      history.pushState(null, '', '#/' + name);
+    }
+  }
   renderCurrentPanel();
+}
+
+function openTask(taskId) {
+  currentTaskId = taskId;
+  setPanel('task-detail');
 }
 
 function renderCurrentPanel() {
   const renders = {
     overview: renderOverview, workflows: renderWorkflows,
     tasks: renderTasks, blockers: renderBlockers,
-    decisions: renderDecisions, events: renderEvents,
-    insights: renderInsights,
+    decisions: renderDecisions, sessions: renderSessions,
+    timeline: renderTimeline, events: renderEvents,
+    thinking: renderThinking, insights: renderInsights,
+    'task-detail': renderTaskDetail,
   };
   if (renders[currentPanel]) renders[currentPanel]();
 }
@@ -786,6 +942,9 @@ function updateCounts() {
   set('nc-blockers',  openB);
   set('nc-decisions', DB.decisions.length);
   set('nc-events',    DB.events.length);
+  set('nc-sessions',  DB.sessions.length);
+  set('nc-timeline',  DB.tool_events.length);
+  set('nc-thinking',  (DB.thinking_estimates || []).length);
 
   // populate workflow filter
   const sel = document.getElementById('task-filter-wf');
@@ -874,7 +1033,7 @@ function renderTasks() {
         const ratio = (t.estimated_minutes && t.actual_minutes)
           ? (t.actual_minutes / t.estimated_minutes).toFixed(2) : null;
         const ratioColor = !ratio ? '' : ratio < 1.2 ? 'good' : ratio < 2 ? 'warn' : 'bad';
-        return `<tr>
+        return `<tr class="clickable" onclick="openTask('${t.id}')">
           <td class="id">${t.id.slice(0,8)}</td>
           <td style="max-width:220px"><strong style="color:var(--text)">${esc(t.title)}</strong>
             ${t.description ? `<br><span class="dim" style="font-size:10px">${esc(truncate(t.description,80))}</span>` : ''}
@@ -889,6 +1048,171 @@ function renderTasks() {
         </tr>`;
       }).join('')}</tbody>
     </table></div>`;
+}
+
+// ── task detail ──────────────────────────────────────────────────────────────
+async function renderTaskDetail() {
+  const el = document.getElementById('task-detail-content');
+  if (!currentTaskId) {
+    el.innerHTML = emptyState('no task selected');
+    return;
+  }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> loading task…</div>';
+
+  try {
+    const task = await fetchJSON(`${API}/tasks/${currentTaskId}`);
+    const wf = DB.workflows.find(w => w.id === task.workflow_id);
+
+    const ratio = (task.estimated_minutes && task.actual_minutes)
+      ? (task.actual_minutes / task.estimated_minutes) : null;
+    const ratioLabel = ratio ? ratio.toFixed(2) + '×' : '—';
+    const ratioColor = !ratio ? '' : ratio < 1.2 ? 'good' : ratio < 2 ? 'warn' : 'bad';
+
+    function fmtMin(m) {
+      if (!m) return '—';
+      if (m < 60) return m + 'm';
+      return Math.floor(m/60) + 'h ' + (m%60) + 'm';
+    }
+
+    function fmtTs(ts) {
+      if (!ts) return '—';
+      return new Date(ts).toLocaleString();
+    }
+
+    let html = `
+      <div class="back-link" onclick="setPanel('tasks')">← back to tasks</div>
+      <div class="detail-header">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span class="badge ${task.status}">${task.status}</span>
+          <span class="badge ${task.priority}">${task.priority}</span>
+          ${task.from_plan ? '<span class="badge" style="background:rgba(62,207,207,0.12);color:var(--cyan);border:1px solid rgba(62,207,207,0.2)">from plan</span>' : ''}
+        </div>
+        <div class="detail-title">${esc(task.title)}</div>
+        <div class="detail-id">${task.id}</div>
+      </div>
+
+      <div class="detail-grid">
+        <div class="detail-field">
+          <div class="detail-field-label">workflow</div>
+          <div class="detail-field-value">${esc(wf?.name || task.workflow_id?.slice(0,8) || '—')}</div>
+        </div>
+        <div class="detail-field">
+          <div class="detail-field-label">estimated</div>
+          <div class="detail-field-value">${fmtMin(task.estimated_minutes)}</div>
+        </div>
+        <div class="detail-field">
+          <div class="detail-field-label">actual</div>
+          <div class="detail-field-value">${fmtMin(task.actual_minutes)}</div>
+        </div>
+        <div class="detail-field">
+          <div class="detail-field-label">accuracy</div>
+          <div class="detail-field-value ${ratioColor}">${ratioLabel}</div>
+        </div>
+        <div class="detail-field">
+          <div class="detail-field-label">created</div>
+          <div class="detail-field-value" style="font-size:11px">${fmtTs(task.created_at)}</div>
+        </div>
+        <div class="detail-field">
+          <div class="detail-field-label">started</div>
+          <div class="detail-field-value" style="font-size:11px">${fmtTs(task.started_at)}</div>
+        </div>
+        <div class="detail-field">
+          <div class="detail-field-label">completed</div>
+          <div class="detail-field-value" style="font-size:11px">${fmtTs(task.completed_at)}</div>
+        </div>
+        <div class="detail-field">
+          <div class="detail-field-label">updated</div>
+          <div class="detail-field-value" style="font-size:11px">${fmtTs(task.updated_at)}</div>
+        </div>
+        ${task.session_id ? `<div class="detail-field">
+          <div class="detail-field-label">session</div>
+          <div class="detail-field-value" style="font-size:10px;font-family:var(--mono)">${task.session_id}</div>
+        </div>` : ''}
+        ${task.parent_task_id ? `<div class="detail-field">
+          <div class="detail-field-label">parent task</div>
+          <div class="detail-field-value"><span class="back-link" onclick="openTask('${task.parent_task_id}')" style="margin:0">${task.parent_task_id.slice(0,8)}</span></div>
+        </div>` : ''}
+      </div>`;
+
+    if (task.description) {
+      html += `
+        <div class="detail-section">
+          <div class="detail-section-title">description</div>
+          <div class="detail-text-block">${esc(task.description)}</div>
+        </div>`;
+    }
+
+    if (task.completion_notes) {
+      html += `
+        <div class="detail-section">
+          <div class="detail-section-title">completion notes</div>
+          <div class="detail-text-block">${esc(task.completion_notes)}</div>
+        </div>`;
+    }
+
+    if (task.subtasks && task.subtasks.length) {
+      html += `
+        <div class="detail-section">
+          <div class="detail-section-title">subtasks (${task.subtasks.length})</div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>id</th><th>title</th><th>status</th><th>priority</th><th>est</th><th>actual</th></tr></thead>
+            <tbody>${task.subtasks.map(s => `<tr class="clickable" onclick="openTask('${s.id}')">
+              <td class="id">${s.id.slice(0,8)}</td>
+              <td><strong style="color:var(--text)">${esc(s.title)}</strong></td>
+              <td><span class="badge ${s.status}">${s.status}</span></td>
+              <td><span class="badge ${s.priority}">${s.priority}</span></td>
+              <td class="dim">${s.estimated_minutes ? s.estimated_minutes+'m' : '—'}</td>
+              <td class="dim">${s.actual_minutes ? s.actual_minutes+'m' : '—'}</td>
+            </tr>`).join('')}</tbody>
+          </table></div>
+        </div>`;
+    }
+
+    if (task.blockers && task.blockers.length) {
+      html += `
+        <div class="detail-section">
+          <div class="detail-section-title">blockers (${task.blockers.length})</div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>id</th><th>title</th><th>type</th><th>status</th><th>resolution</th><th>mins</th><th>opened</th></tr></thead>
+            <tbody>${task.blockers.map(b => `<tr>
+              <td class="id">${b.id.slice(0,8)}</td>
+              <td><strong style="color:var(--text)">${esc(b.title)}</strong></td>
+              <td class="mono dim">${esc(b.blocker_type || '—')}</td>
+              <td><span class="badge ${b.status}">${b.status}</span></td>
+              <td class="dim" style="max-width:180px;font-size:11px">${esc(truncate(b.resolution, 80) || '—')}</td>
+              <td class="dim">${b.resolution_minutes ? b.resolution_minutes+'m' : '—'}</td>
+              <td class="ts">${relTime(b.opened_at)}</td>
+            </tr>`).join('')}</tbody>
+          </table></div>
+        </div>`;
+    }
+
+    if (task.decisions && task.decisions.length) {
+      html += `
+        <div class="detail-section">
+          <div class="detail-section-title">decisions (${task.decisions.length})</div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>id</th><th>title</th><th>decision</th><th>tags</th><th>recorded</th></tr></thead>
+            <tbody>${task.decisions.map(d => {
+              const tags = (d.tags||'').split(',').map(t=>t.trim()).filter(Boolean);
+              return `<tr>
+                <td class="id">${d.id.slice(0,8)}</td>
+                <td><strong style="color:var(--text)">${esc(d.title)}</strong></td>
+                <td class="dim" style="max-width:240px;font-size:11px">${esc(truncate(d.decision, 100))}</td>
+                <td>${tags.length ? `<div class="tags">${tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>` : '<span class="dim">—</span>'}</td>
+                <td class="ts">${relTime(d.created_at)}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table></div>
+        </div>`;
+    }
+
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `
+      <div class="back-link" onclick="setPanel('tasks')">← back to tasks</div>
+      <div class="empty"><div class="empty-icon">✕</div><p>failed to load task: ${esc(e.message)}</p></div>`;
+  }
 }
 
 // ── blockers ──────────────────────────────────────────────────────────────────
@@ -956,6 +1280,93 @@ function renderDecisions() {
     </table></div>`;
 }
 
+// ── sessions ──────────────────────────────────────────────────────────────
+function renderSessions() {
+  set('session-count', `${DB.sessions.length} total`);
+  if (!DB.sessions.length) {
+    document.getElementById('sessions-table').innerHTML = emptyState('no sessions recorded');
+    return;
+  }
+  const sorted = [...DB.sessions].sort((a,b) => new Date(b.started_at||0) - new Date(a.started_at||0));
+  document.getElementById('sessions-table').innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>id</th><th>model</th><th>source</th><th>duration</th><th>reads</th><th>writes</th><th>bash</th><th>todo</th><th>compactions</th><th>subagents</th><th>started</th></tr></thead>
+      <tbody>${sorted.map(s => {
+        const evts = DB.tool_events.filter(e => e.session_id === s.id);
+        const reads  = evts.filter(e => ['Read','Glob','Grep','LS'].includes(e.tool_name) && e.phase === 'post').length;
+        const writes = evts.filter(e => ['Write','Edit','MultiEdit'].includes(e.tool_name) && e.phase === 'post').length;
+        const bash   = evts.filter(e => e.tool_name === 'Bash' && e.phase === 'post').length;
+        const todo   = evts.filter(e => e.tool_name === 'TodoWrite').length;
+        const dur = s.started_at && s.ended_at
+          ? Math.round((new Date(s.ended_at) - new Date(s.started_at)) / 60000) + 'm'
+          : s.started_at ? 'active' : '—';
+        return `<tr>
+          <td class="id">${(s.id||'').slice(0,8)}</td>
+          <td class="dim" style="font-size:11px">${esc(s.model||'—')}</td>
+          <td><span class="badge ${s.source==='resume'?'in_progress':'active'}">${esc(s.source||'—')}</span></td>
+          <td>${dur}</td>
+          <td class="dim">${reads}</td>
+          <td style="color:var(--blue)">${writes}</td>
+          <td style="color:var(--amber)">${bash}</td>
+          <td style="color:var(--green)">${todo}</td>
+          <td class="dim">—</td>
+          <td class="dim">—</td>
+          <td class="ts">${relTime(s.started_at)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
+// ── timeline ──────────────────────────────────────────────────────────────
+function renderTimeline() {
+  // Show tool events for the most recent session
+  const sortedSessions = [...DB.sessions].sort((a,b) => new Date(b.started_at||0) - new Date(a.started_at||0));
+  const latestSession = sortedSessions[0];
+  if (!latestSession) {
+    document.getElementById('timeline-log').innerHTML = emptyState('no sessions recorded');
+    return;
+  }
+  const evts = DB.tool_events
+    .filter(e => e.session_id === latestSession.id)
+    .sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+  if (!evts.length) {
+    document.getElementById('timeline-log').innerHTML = emptyState('no tool events for latest session');
+    return;
+  }
+
+  // Detect planning phase: events before first Write/Edit/MultiEdit
+  const firstWriteIdx = evts.findIndex(e => ['Write','Edit','MultiEdit'].includes(e.tool_name));
+  const planEnd = firstWriteIdx >= 0 ? firstWriteIdx : evts.length;
+
+  const toolColor = (e, i) => {
+    if (e.phase === 'failure') return 'color:var(--red)';
+    if (e.tool_name === 'TodoWrite' || e.tool_name === 'TodoRead') return 'color:var(--green)';
+    if (['Write','Edit','MultiEdit'].includes(e.tool_name)) return 'color:var(--blue)';
+    if (e.tool_name === 'Bash') return 'color:var(--amber)';
+    if (['Read','Glob','Grep','LS'].includes(e.tool_name)) return 'color:var(--muted)';
+    if (e.phase === 'signal') return 'color:var(--purple)';
+    return 'color:var(--text)';
+  };
+
+  document.getElementById('timeline-log').innerHTML = `
+    <div class="table-wrap scrollable"><table>
+      <thead><tr><th>phase</th><th>time</th><th>tool</th><th>detail</th><th>ms</th></tr></thead>
+      <tbody>${evts.map((e,i) => {
+        const inPlan = i < planEnd;
+        const detail = e.file_path || e.command || '';
+        const truncDetail = detail.length > 80 ? detail.slice(0,80) + '...' : detail;
+        const time = new Date(e.created_at).toLocaleTimeString();
+        return `<tr style="${inPlan ? 'background:rgba(155,127,232,0.04)' : ''}">
+          <td><span class="badge ${e.phase === 'failure' ? 'blocked' : e.phase === 'signal' ? 'paused' : e.phase === 'pre' ? 'pending' : 'active'}">${e.phase}</span></td>
+          <td class="ts" style="font-size:11px">${time}</td>
+          <td style="${toolColor(e,i)};font-weight:500">${esc(e.tool_name)}</td>
+          <td class="dim" style="max-width:300px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(detail)}">${esc(truncDetail)}</td>
+          <td class="dim">${e.duration_ms != null ? e.duration_ms : '—'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
 // ── events ────────────────────────────────────────────────────────────────────
 function renderEvents() {
   const filter = document.getElementById('event-filter').value;
@@ -985,6 +1396,87 @@ function renderEvents() {
           <span class="event-payload">${esc(JSON.stringify(e.payload||{}))}</span>
         </div>`).join('')}
     </div>`;
+}
+
+// ── thinking ──────────────────────────────────────────────────────────────────
+function renderThinking() {
+  const estimates = DB.thinking_estimates || [];
+  const baselines = DB.tool_baselines || [];
+
+  if (!estimates.length) {
+    document.getElementById('thinking-stats').innerHTML = '';
+    document.getElementById('thinking-turns').innerHTML = emptyState('no thinking data yet — use tools in a session');
+    document.getElementById('thinking-baselines').innerHTML = '';
+    return;
+  }
+
+  // Aggregate stats
+  const totalThinking = estimates.reduce((s,e) => s + (e.initial_gap_ms||0) + (e.interleaved_ms||0), 0);
+  const totalWall = estimates.reduce((s,e) => s + (e.total_wall_ms||0), 0);
+  const totalTool = estimates.reduce((s,e) => s + (e.total_tool_ms||0), 0);
+  const thinkPct = totalWall > 0 ? Math.round(totalThinking / totalWall * 100) : 0;
+
+  document.getElementById('thinking-stats').innerHTML = `
+    <div class="stat-row">
+      <div class="stat-card"><div class="stat-label">turns analyzed</div><div class="stat-value blue">${estimates.length}</div></div>
+      <div class="stat-card"><div class="stat-label">total thinking</div><div class="stat-value purple">${fmtMs(totalThinking)}</div></div>
+      <div class="stat-card"><div class="stat-label">total tool time</div><div class="stat-value cyan">${fmtMs(totalTool)}</div></div>
+      <div class="stat-card"><div class="stat-label">thinking %</div><div class="stat-value">${thinkPct}%</div></div>
+    </div>`;
+
+  // Per-turn stacked bars
+  const sorted = [...estimates].sort((a,b) => new Date(a.prompt_timestamp) - new Date(b.prompt_timestamp));
+  const maxWall = Math.max(...sorted.map(e => e.total_wall_ms || 1));
+
+  const turnRows = sorted.map(e => {
+    const wall = e.total_wall_ms || 1;
+    const initPct  = Math.round((e.initial_gap_ms || 0) / wall * 100);
+    const interPct = Math.round((e.interleaved_ms || 0) / wall * 100);
+    const toolPct  = Math.round((e.total_tool_ms || 0) / wall * 100);
+    const barWidth = Math.max(10, Math.round(wall / maxWall * 100));
+
+    return `<div style="display:flex;align-items:center;gap:12px;padding:4px 14px;font-size:11px">
+      <span style="color:var(--muted);min-width:32px">T${e.turn_number}</span>
+      <div style="flex:1;display:flex;height:16px;border-radius:2px;overflow:hidden;width:${barWidth}%;background:var(--border)">
+        <div style="width:${initPct}%;background:var(--blue)" title="initial: ${fmtMs(e.initial_gap_ms||0)}"></div>
+        <div style="width:${interPct}%;background:var(--purple)" title="interleaved: ${fmtMs(e.interleaved_ms||0)}"></div>
+        <div style="width:${toolPct}%;background:var(--cyan)" title="tool: ${fmtMs(e.total_tool_ms||0)}"></div>
+      </div>
+      <span style="color:var(--dim);min-width:60px;text-align:right">${fmtMs(wall)}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('thinking-turns').innerHTML = `
+    <div style="margin-bottom:8px;display:flex;gap:16px;padding:0 14px;font-size:10px;color:var(--muted)">
+      <span><span style="display:inline-block;width:8px;height:8px;background:var(--blue);border-radius:1px;margin-right:4px"></span>initial gap</span>
+      <span><span style="display:inline-block;width:8px;height:8px;background:var(--purple);border-radius:1px;margin-right:4px"></span>interleaved</span>
+      <span><span style="display:inline-block;width:8px;height:8px;background:var(--cyan);border-radius:1px;margin-right:4px"></span>tool execution</span>
+    </div>
+    <div class="scrollable" style="max-height:300px">${turnRows}</div>`;
+
+  // Baselines table
+  if (baselines.length) {
+    document.getElementById('thinking-baselines').innerHTML = `
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">tool baselines</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>tool</th><th>avg</th><th>p50</th><th>p95</th><th>samples</th></tr></thead>
+        <tbody>${baselines.map(b => `<tr>
+          <td style="color:var(--text)">${esc(b.tool_name)}</td>
+          <td class="dim">${b.avg_ms}ms</td>
+          <td class="dim">${b.p50_ms}ms</td>
+          <td class="dim">${b.p95_ms}ms</td>
+          <td class="dim">${b.sample_count}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+  } else {
+    document.getElementById('thinking-baselines').innerHTML = '';
+  }
+}
+
+function fmtMs(ms) {
+  if (ms < 1000) return ms + 'ms';
+  if (ms < 60000) return (ms/1000).toFixed(1) + 's';
+  return (ms/60000).toFixed(1) + 'm';
 }
 
 // ── insights ──────────────────────────────────────────────────────────────────

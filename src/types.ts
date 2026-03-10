@@ -50,6 +50,8 @@ export interface Task {
   started_at: string | null;
   completed_at: string | null;
   compressed: boolean; // true = full content discarded, summary only
+  session_id: string | null;
+  from_plan: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -94,6 +96,83 @@ export interface EngineerPreference {
   retrieval_depth: RetrievalDepth;
   created_at: string;
   updated_at: string;
+}
+
+export interface Session {
+  id: string;
+  workflow_id: string | null;
+  model: string | null;
+  agent_type: string | null;
+  source: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  exit_reason: string | null;
+  created_at: string;
+}
+
+export interface ToolEvent {
+  id: string;
+  session_id: string | null;
+  workflow_id: string | null;
+  phase: string;
+  tool_name: string;
+  file_path: string | null;
+  command: string | null;
+  duration_ms: number | null;
+  exit_code: number | null;
+  error_type: string | null;
+  interrupted: boolean | null;
+  pre_timestamp: string | null;
+  post_timestamp: string | null;
+  execution_ms: number | null;
+  gap_after_ms: number | null;
+  created_at: string;
+}
+
+export interface ThinkingEstimate {
+  id: string;
+  session_id: string;
+  workflow_id: string | null;
+  turn_number: number;
+  initial_gap_ms: number | null;
+  interleaved_ms: number;
+  total_tool_ms: number;
+  total_wall_ms: number;
+  gap_count: number;
+  prompt_timestamp: string;
+  stop_timestamp: string;
+  created_at: string;
+}
+
+export interface ToolBaseline {
+  tool_name: string;
+  avg_ms: number;
+  p50_ms: number;
+  p95_ms: number;
+  sample_count: number;
+  updated_at: string;
+}
+
+export interface Subagent {
+  id: string;
+  session_id: string | null;
+  workflow_id: string | null;
+  agent_type: string | null;
+  prompt_len: number | null;
+  files_created: string;
+  files_edited: string;
+  files_deleted: string;
+  started_at: string | null;
+  ended_at: string | null;
+  created_at: string;
+}
+
+export interface CompactionEvent {
+  id: string;
+  session_id: string | null;
+  workflow_id: string | null;
+  trigger: string | null;
+  created_at: string;
 }
 
 // ─── Compound types ───────────────────────────────────────────────────────────

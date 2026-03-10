@@ -81,7 +81,10 @@ async function main() {
 
     if (data.count === 0) {
       console.log(
-        "Claude Project History: No active task. Call cph_task_create then cph_task_start before writing files."
+        "[cph] No active task.\n" +
+        "You have context from cph in your conversation.\n" +
+        "Call cph_task_start to begin a task, or cph_task_create if none exist.\n" +
+        "Check the [cph] lines at the top of your context for current state."
       );
       process.exit(2);
     }
