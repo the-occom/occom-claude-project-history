@@ -1,5 +1,6 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { newId } from "./db.js";
+import { getSessionAgent } from "./session-state.js";
 
 // ── In-memory turn state (lost on daemon restart — acceptable) ───────────────
 
@@ -51,16 +52,17 @@ export async function onPreToolUse(
 
   // INSERT new row with phase='pre'
   const id = newId();
+  const agentId = getSessionAgent(sessionId);
   await db.query(
     `INSERT INTO tool_events
-     (id, session_id, workflow_id, phase, tool_name, file_path, command, pre_timestamp, created_at)
-     VALUES ($1,$2,$3,'pre',$4,$5,$6,$7,$8)`,
+     (id, session_id, workflow_id, phase, tool_name, file_path, command, pre_timestamp, agent_id, created_at)
+     VALUES ($1,$2,$3,'pre',$4,$5,$6,$7,$8,$9)`,
     [
       id, sessionId, workflowId,
       data.tool_name as string,
       (data.file_path as string | undefined) ?? null,
       (data.command as string | undefined) ?? null,
-      timestamp, timestamp,
+      timestamp, agentId, timestamp,
     ]
   );
 
@@ -106,18 +108,19 @@ export async function onPostToolUse(
 
   // Fallback INSERT if no matching pre row
   const id = newId();
+  const fallbackAgentId = getSessionAgent(sessionId);
   await db.query(
     `INSERT INTO tool_events
      (id, session_id, workflow_id, phase, tool_name, file_path, command,
-      duration_ms, exit_code, post_timestamp, created_at)
-     VALUES ($1,$2,$3,'complete',$4,$5,$6,$7,$8,$9,$10)`,
+      duration_ms, exit_code, post_timestamp, agent_id, created_at)
+     VALUES ($1,$2,$3,'complete',$4,$5,$6,$7,$8,$9,$10,$11)`,
     [
       id, sessionId, null, toolName,
       (data.file_path as string | undefined) ?? null,
       (data.command as string | undefined) ?? null,
       (data.duration_ms as number | undefined) ?? null,
       (data.exit_code as number | undefined) ?? null,
-      timestamp, timestamp,
+      timestamp, fallbackAgentId, timestamp,
     ]
   );
 

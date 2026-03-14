@@ -5,6 +5,7 @@ import { getGitContext, inferWorkflowNameFromBranch, branchMatchesPattern } from
 import { buildSessionContext } from "../services/retrieval.js";
 import { runCompression, getStorageSummary } from "../services/compressor.js";
 import { contextSync, registerSession } from "../services/context.js";
+import { resolveIdentity } from "../identity.js";
 import type { Workflow, RetrievalDepth, EngineerPreference, Task } from "../types.js";
 
 export function registerSessionTools(server: McpServer, sessionId: string): void {
@@ -86,8 +87,13 @@ unless the user explicitly asks. Pull individual records on demand with their ID
 
         runCompression(db).catch(() => {});
 
+        const identity = resolveIdentity(cwd);
+
         return {
-          content: [{ type: "text", text: JSON.stringify(context, null, 2) }]
+          content: [{ type: "text", text: JSON.stringify({
+            developer: { id: identity.id, name: identity.name },
+            ...context,
+          }, null, 2) }]
         };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);

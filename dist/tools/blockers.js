@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { getDb, newId, findOne, withTransaction, ConflictError } from "../db.js";
-export function registerBlockerTools(server) {
+import { emitActivity } from "../activity.js";
+import { getSessionAgent, getSessionDeveloper } from "../session-state.js";
+export function registerBlockerTools(server, sessionId) {
     server.registerTool("cph_blocker_create", {
         title: "Create Blocker",
         description: `Log a blocker that is preventing progress.
@@ -49,6 +51,14 @@ Auto-behavior: if task_id is provided, the task status is automatically set to '
             });
             const db = await getDb();
             const blocker = await findOne(db, `SELECT * FROM blockers WHERE id = $1`, [id]);
+            const sid = sessionId ?? null;
+            await emitActivity({
+                developer_id: sid ? getSessionDeveloper(sid) : null,
+                agent_id: sid ? getSessionAgent(sid) : null,
+                session_id: sid, workflow_id,
+                event_type: "blocker_created",
+                subject_type: "blocker", subject_id: id, subject_title: title,
+            }, db).catch(() => { });
             return { content: [{ type: "text", text: JSON.stringify(blocker, null, 2) }] };
         }
         catch (err) {
@@ -99,6 +109,14 @@ Auto-behavior: if blocker has a task_id and unblock_task=true, task is set back 
             });
             const db = await getDb();
             const updated = await findOne(db, `SELECT * FROM blockers WHERE id = $1`, [blocker_id]);
+            const sid = sessionId ?? null;
+            await emitActivity({
+                developer_id: sid ? getSessionDeveloper(sid) : null,
+                agent_id: sid ? getSessionAgent(sid) : null,
+                session_id: sid, workflow_id: updated?.workflow_id ?? null,
+                event_type: "blocker_resolved",
+                subject_type: "blocker", subject_id: blocker_id, subject_title: updated?.title ?? null,
+            }, db).catch(() => { });
             return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
         }
         catch (err) {
@@ -135,6 +153,15 @@ Use when a blocker has been open too long and needs to be surfaced to stakeholde
             });
             const db = await getDb();
             const updated = await findOne(db, `SELECT * FROM blockers WHERE id = $1`, [blocker_id]);
+            const sid = sessionId ?? null;
+            await emitActivity({
+                developer_id: sid ? getSessionDeveloper(sid) : null,
+                agent_id: sid ? getSessionAgent(sid) : null,
+                session_id: sid, workflow_id: updated?.workflow_id ?? null,
+                event_type: "blocker_created",
+                subject_type: "blocker", subject_id: blocker_id, subject_title: updated?.title ?? null,
+                detail: { escalated: true },
+            }, db).catch(() => { });
             return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
         }
         catch (err) {

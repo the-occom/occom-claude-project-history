@@ -13,23 +13,32 @@ import { registerTaskTools } from "./tools/tasks.js";
 import { registerBlockerTools } from "./tools/blockers.js";
 import { registerDecisionTools } from "./tools/decisions.js";
 import { registerThinkingTools } from "./tools/thinking.js";
+import { registerCoordinationTools } from "./tools/coordination.js";
+import { registerReconstructTools } from "./tools/reconstruct.js";
+import { registerCodebaseTools } from "./tools/codebase.js";
 import { onUserPrompt, onPreToolUse, onPostToolUse, onPostToolUseFailure, sealTurnThinking, } from "./thinking.js";
 import { getDb, SCHEMA_VERSION, newId, PRIORITY_ORDER } from "./db.js";
 import { bus } from "./services/notify.js";
 import { unregisterSession } from "./services/context.js";
 import { createDebugRouter } from "./debug/router.js";
-const PKG_VERSION = "0.5.0";
+import { resolveIdentity, upsertDeveloper } from "./identity.js";
+import { emitActivity, pruneActivityStream } from "./activity.js";
+import { setSessionAgent, getSessionAgent, setSessionDeveloper, getSessionDeveloper } from "./session-state.js";
+const PKG_VERSION = "0.6.0";
 function createServer(sessionId = "stdio") {
     const server = new McpServer({
         name: "occom-claude-project-history",
-        version: "0.5.0"
+        version: "0.6.0"
     });
     registerSessionTools(server, sessionId);
     registerWorkflowTools(server);
-    registerTaskTools(server);
-    registerBlockerTools(server);
-    registerDecisionTools(server);
+    registerTaskTools(server, sessionId);
+    registerBlockerTools(server, sessionId);
+    registerDecisionTools(server, sessionId);
     registerThinkingTools(server);
+    registerCoordinationTools(server);
+    registerReconstructTools(server);
+    registerCodebaseTools(server, sessionId);
     return server;
 }
 const mode = process.argv[2];
@@ -51,6 +60,7 @@ async function main() {
     catch { }
     const db = await getDb();
     await bus.start(db);
+    pruneActivityStream(db).catch(() => { });
     if (mode === "--serve") {
         const app = express();
         const port = Number(process.env.CPH_PORT ?? 3741);
@@ -176,6 +186,41 @@ async function main() {
                         lines.push(`Recent decisions: ${decisionsResult.rows.map(d => d.title).join(", ")}`);
                     }
                     lines.push("Call cph_session_init for full context.");
+                }
+                // Team awareness: show other active agents on same workflow
+                if (sid && wid) {
+                    try {
+                        const selfAgent = await db.query(`SELECT agent_id FROM sessions WHERE id = $1`, [sid]);
+                        const selfAgentId = selfAgent.rows[0]?.agent_id;
+                        const teamResult = await db.query(`SELECT d.name AS developer_name,
+                      t.title AS task_title,
+                      b.title AS blocker_title
+               FROM sessions s
+               JOIN developers d ON d.id = s.developer_id
+               LEFT JOIN LATERAL (
+                 SELECT title FROM tasks WHERE workflow_id = s.workflow_id AND status = 'in_progress'
+                 ORDER BY updated_at DESC LIMIT 1
+               ) t ON true
+               LEFT JOIN LATERAL (
+                 SELECT title FROM blockers WHERE workflow_id = s.workflow_id AND status = 'open'
+                 ORDER BY opened_at DESC LIMIT 1
+               ) b ON true
+               WHERE s.workflow_id = $1
+                 AND s.ended_at IS NULL
+                 AND ($2::text IS NULL OR s.agent_id != $2)
+                 AND s.id != $3`, [wid, selfAgentId ?? null, sid]);
+                        if (teamResult.rows.length > 0) {
+                            const teamParts = teamResult.rows.map(r => {
+                                if (r.blocker_title)
+                                    return `${r.developer_name} → blocked: ${r.blocker_title}`;
+                                if (r.task_title)
+                                    return `${r.developer_name} → ${r.task_title}`;
+                                return `${r.developer_name} → available`;
+                            });
+                            lines.push(`Team: ${teamParts.join(" | ")}`);
+                        }
+                    }
+                    catch { }
                 }
                 res.type("text/plain").send(lines.join("\n"));
             }
@@ -312,14 +357,35 @@ async function main() {
 async function routeEvent(event, sessionId, workflowId, timestamp, data) {
     const db = await getDb();
     switch (event) {
-        case "SessionStart":
+        case "SessionStart": {
             await db.query(`INSERT INTO sessions (id, workflow_id, model, agent_type, source, started_at)
          VALUES ($1,$2,$3,$4,$5,$6)
          ON CONFLICT (id) DO NOTHING`, [sessionId, workflowId, data.model, data.agent_type, data.source, timestamp]);
             if (workflowId) {
                 await db.query(`UPDATE workflows SET last_planning_started_at = $1 WHERE id = $2`, [timestamp, workflowId]);
             }
+            // Identity + agent tracking
+            const cwd = data.cwd ?? process.cwd();
+            const identity = resolveIdentity(cwd);
+            await upsertDeveloper(identity, db);
+            const agentId = newId();
+            await db.query(`INSERT INTO agents (id, session_id, developer_id, agent_type, model, spawned_at)
+         VALUES ($1,$2,$3,$4,$5,$6)`, [agentId, sessionId, identity.id, "main", data.model ?? null, timestamp]);
+            await db.query(`UPDATE sessions SET developer_id = $1, agent_id = $2 WHERE id = $3`, [identity.id, agentId, sessionId]);
+            setSessionAgent(sessionId, agentId);
+            setSessionDeveloper(sessionId, identity.id);
+            await emitActivity({
+                developer_id: identity.id,
+                agent_id: agentId,
+                session_id: sessionId,
+                workflow_id: workflowId,
+                event_type: "session_started",
+                subject_type: "session",
+                subject_id: sessionId,
+                subject_title: `Session by ${identity.name}`,
+            }, db).catch(() => { });
             break;
+        }
         case "SessionEnd":
             await db.query(`UPDATE sessions SET ended_at = $1, exit_reason = $2 WHERE id = $3`, [timestamp, data.exit_reason, sessionId]);
             break;
@@ -347,11 +413,23 @@ async function routeEvent(event, sessionId, workflowId, timestamp, data) {
         case "Stop":
             await sealTurnThinking(sessionId, workflowId, timestamp, db);
             break;
-        case "SubagentStart":
+        case "SubagentStart": {
             await db.query(`INSERT INTO subagents (id, session_id, workflow_id, agent_type, prompt_len, started_at)
          VALUES ($1,$2,$3,$4,$5,$6)`, [data.agent_id, sessionId, workflowId, data.agent_type, data.prompt_len, timestamp]);
+            // Track in agents table
+            const subDevId = getSessionDeveloper(sessionId);
+            const parentAgentId = getSessionAgent(sessionId);
+            const agentTypeMap = {
+                Explore: "explore", Plan: "main", Code: "code",
+                Validator: "validator", CI: "ci",
+            };
+            const mappedType = agentTypeMap[data.agent_type] ?? "external";
+            await db.query(`INSERT INTO agents (id, session_id, developer_id, parent_agent_id, agent_type, spawned_at)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (id) DO NOTHING`, [data.agent_id, sessionId, subDevId, parentAgentId, mappedType, timestamp]);
             break;
-        case "SubagentStop":
+        }
+        case "SubagentStop": {
             await db.query(`UPDATE subagents
          SET ended_at = $1,
              files_created = $2,
@@ -362,7 +440,16 @@ async function routeEvent(event, sessionId, workflowId, timestamp, data) {
                 JSON.stringify(data.files_edited),
                 JSON.stringify(data.files_deleted),
                 data.agent_id]);
+            // Update agents table with stats
+            const filesWritten = Array.isArray(data.files_created) ? data.files_created : [];
+            const filesRead = [];
+            await db.query(`UPDATE agents
+         SET ended_at = $1,
+             files_written = $2,
+             files_read = $3
+         WHERE id = $4`, [timestamp, JSON.stringify(filesWritten), JSON.stringify(filesRead), data.agent_id]);
             break;
+        }
         case "PreCompact":
             await db.query(`INSERT INTO compaction_events (id, session_id, workflow_id, trigger, created_at)
          VALUES ($1,$2,$3,$4,$5)`, [newId(), sessionId, workflowId, data.trigger, timestamp]);

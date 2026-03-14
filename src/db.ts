@@ -7,7 +7,7 @@ import { mkdirSync } from "fs";
 const DB_DIR = join(homedir(), ".cph");
 const DB_PATH = join(DB_DIR, "db");
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 let _db: PGlite | null = null;
 
@@ -270,6 +270,128 @@ async function migrate(db: PGlite): Promise<void> {
       ('MultiEdit',100,  60,  350,  0),
       ('WebSearch',800, 500, 3000,  0)
     ON CONFLICT (tool_name) DO NOTHING;
+  `);
+
+  // v0.6.0 — identity, coordination, decision graph
+  await db.exec(`
+    -- ── Developers ────────────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS developers (
+      id              TEXT PRIMARY KEY,
+      name            TEXT NOT NULL,
+      first_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      session_count   INTEGER NOT NULL DEFAULT 0,
+      preferences     JSONB,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- ── Agents ────────────────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS agents (
+      id               TEXT PRIMARY KEY,
+      session_id       TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      developer_id     TEXT REFERENCES developers(id) ON DELETE SET NULL,
+      parent_agent_id  TEXT REFERENCES agents(id) ON DELETE SET NULL,
+      agent_type       TEXT NOT NULL DEFAULT 'main',
+      model            TEXT,
+      spawned_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      ended_at         TIMESTAMPTZ,
+      tool_call_count  INTEGER NOT NULL DEFAULT 0,
+      task_count       INTEGER NOT NULL DEFAULT 0,
+      decision_count   INTEGER NOT NULL DEFAULT 0,
+      files_written    JSONB DEFAULT '[]',
+      files_read       JSONB DEFAULT '[]',
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_agents_session     ON agents(session_id);
+    CREATE INDEX IF NOT EXISTS idx_agents_developer   ON agents(developer_id);
+    CREATE INDEX IF NOT EXISTS idx_agents_type        ON agents(agent_type);
+
+    -- ── File Areas ────────────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS file_areas (
+      id               TEXT PRIMARY KEY,
+      workflow_id      TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+      path_pattern     TEXT NOT NULL,
+      responsibility   TEXT,
+      depends_on       JSONB DEFAULT '[]',
+      depended_on_by   JSONB DEFAULT '[]',
+      last_indexed_at  TIMESTAMPTZ,
+      indexed_by       TEXT,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_file_areas_workflow ON file_areas(workflow_id);
+
+    -- ── Activity Stream ───────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS activity_stream (
+      id             TEXT PRIMARY KEY,
+      developer_id   TEXT REFERENCES developers(id) ON DELETE SET NULL,
+      agent_id       TEXT,
+      session_id     TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+      workflow_id    TEXT REFERENCES workflows(id) ON DELETE SET NULL,
+      event_type     TEXT NOT NULL,
+      subject_type   TEXT,
+      subject_id     TEXT,
+      subject_title  TEXT,
+      detail         JSONB,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_activity_stream_workflow   ON activity_stream(workflow_id);
+    CREATE INDEX IF NOT EXISTS idx_activity_stream_developer  ON activity_stream(developer_id);
+    CREATE INDEX IF NOT EXISTS idx_activity_stream_session    ON activity_stream(session_id);
+    CREATE INDEX IF NOT EXISTS idx_activity_stream_type       ON activity_stream(event_type);
+    CREATE INDEX IF NOT EXISTS idx_activity_stream_created_at ON activity_stream(created_at);
+    -- Retention: prune events older than 30 days on daemon start
+
+    -- ── ALTER existing tables ─────────────────────────────────────────────────
+    ALTER TABLE sessions ADD COLUMN IF NOT EXISTS developer_id TEXT;
+    ALTER TABLE sessions ADD COLUMN IF NOT EXISTS agent_id TEXT;
+
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_id TEXT;
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS developer_id TEXT;
+
+    ALTER TABLE decisions ADD COLUMN IF NOT EXISTS agent_id TEXT;
+    ALTER TABLE decisions ADD COLUMN IF NOT EXISTS developer_id TEXT;
+
+    ALTER TABLE tool_events ADD COLUMN IF NOT EXISTS agent_id TEXT;
+
+    ALTER TABLE blockers ADD COLUMN IF NOT EXISTS agent_id TEXT;
+    ALTER TABLE blockers ADD COLUMN IF NOT EXISTS developer_id TEXT;
+
+    -- ── Decision enrichment ───────────────────────────────────────────────────
+    ALTER TABLE decisions ADD COLUMN IF NOT EXISTS forcing_constraint TEXT;
+    ALTER TABLE decisions ADD COLUMN IF NOT EXISTS unlocks TEXT;
+    ALTER TABLE decisions ADD COLUMN IF NOT EXISTS constrains TEXT;
+    ALTER TABLE decisions ADD COLUMN IF NOT EXISTS revisit_if TEXT;
+    ALTER TABLE decisions ADD COLUMN IF NOT EXISTS blocker_id TEXT;
+    ALTER TABLE decisions ADD COLUMN IF NOT EXISTS files_affected JSONB DEFAULT '[]';
+    ALTER TABLE decisions ADD COLUMN IF NOT EXISTS reversibility TEXT DEFAULT 'reversible';
+    ALTER TABLE decisions ADD COLUMN IF NOT EXISTS confidence TEXT DEFAULT 'medium';
+  `);
+
+  // Rename alternatives_considered → alternatives_considered_legacy (conditional)
+  await db.exec(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'decisions'
+          AND column_name = 'alternatives_considered'
+          AND data_type = 'text'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'decisions'
+          AND column_name = 'alternatives_considered_legacy'
+      ) THEN
+        ALTER TABLE decisions RENAME COLUMN alternatives_considered TO alternatives_considered_legacy;
+        ALTER TABLE decisions ADD COLUMN alternatives_considered JSONB DEFAULT '[]';
+      END IF;
+    END $$;
+  `);
+
+  // Ensure both columns exist (idempotent for fresh installs)
+  await db.exec(`
+    ALTER TABLE decisions ADD COLUMN IF NOT EXISTS alternatives_considered_legacy TEXT;
+    ALTER TABLE decisions ADD COLUMN IF NOT EXISTS alternatives_considered JSONB DEFAULT '[]';
   `);
 }
 

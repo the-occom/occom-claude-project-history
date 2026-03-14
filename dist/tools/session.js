@@ -4,6 +4,7 @@ import { getGitContext, inferWorkflowNameFromBranch, branchMatchesPattern } from
 import { buildSessionContext } from "../services/retrieval.js";
 import { runCompression, getStorageSummary } from "../services/compressor.js";
 import { contextSync, registerSession } from "../services/context.js";
+import { resolveIdentity } from "../identity.js";
 export function registerSessionTools(server, sessionId) {
     registerSession(sessionId);
     // ── SESSION INIT ─────────────────────────────────────────────────────────────
@@ -60,8 +61,12 @@ unless the user explicitly asks. Pull individual records on demand with their ID
             }
             const context = await buildSessionContext(db, workflow_id, resolvedDepth, gitContext, gitContext.engineer_id);
             runCompression(db).catch(() => { });
+            const identity = resolveIdentity(cwd);
             return {
-                content: [{ type: "text", text: JSON.stringify(context, null, 2) }]
+                content: [{ type: "text", text: JSON.stringify({
+                            developer: { id: identity.id, name: identity.name },
+                            ...context,
+                        }, null, 2) }]
             };
         }
         catch (err) {

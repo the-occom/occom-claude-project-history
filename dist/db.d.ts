@@ -1,5 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
-export declare const SCHEMA_VERSION = 5;
+export declare const SCHEMA_VERSION = 6;
 export declare function getDb(): Promise<PGlite>;
 export declare function newId(): string;
 export declare class ConflictError extends Error {

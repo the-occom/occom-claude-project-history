@@ -15,7 +15,7 @@ export function createDebugRouter() {
     router.get("/all", async (_req, res) => {
         try {
             const db = await getDb();
-            const [workflows, tasks, blockers, decisions, sessions, toolEvents, thinkingEstimates, toolBaselines] = await Promise.all([
+            const [workflows, tasks, blockers, decisions, sessions, toolEvents, thinkingEstimates, toolBaselines, developers, agents, activityStream] = await Promise.all([
                 db.query("SELECT * FROM workflows ORDER BY updated_at DESC"),
                 db.query("SELECT * FROM tasks ORDER BY updated_at DESC LIMIT 500"),
                 db.query("SELECT * FROM blockers ORDER BY created_at DESC LIMIT 200"),
@@ -24,6 +24,9 @@ export function createDebugRouter() {
                 db.query("SELECT * FROM tool_events ORDER BY created_at DESC LIMIT 500"),
                 db.query("SELECT * FROM thinking_estimates ORDER BY created_at DESC LIMIT 200"),
                 db.query("SELECT * FROM tool_baselines ORDER BY sample_count DESC"),
+                db.query("SELECT * FROM developers ORDER BY last_seen_at DESC LIMIT 50"),
+                db.query("SELECT * FROM agents ORDER BY spawned_at DESC LIMIT 200"),
+                db.query("SELECT * FROM activity_stream ORDER BY created_at DESC LIMIT 200"),
             ]);
             res.json({
                 workflows: workflows.rows,
@@ -34,6 +37,9 @@ export function createDebugRouter() {
                 tool_events: toolEvents.rows,
                 thinking_estimates: thinkingEstimates.rows,
                 tool_baselines: toolBaselines.rows,
+                developers: developers.rows,
+                agents: agents.rows,
+                activity_stream: activityStream.rows,
             });
         }
         catch (err) {

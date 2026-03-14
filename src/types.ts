@@ -24,6 +24,12 @@ export type BlockerStatus = "open" | "resolved" | "escalated";
 
 export type RetrievalDepth = "minimal" | "standard" | "deep";
 
+export type AgentType = "main" | "explore" | "code" | "validator" | "ci" | "external";
+
+export type Reversibility = "reversible" | "costly" | "irreversible";
+
+export type Confidence = "low" | "medium" | "high";
+
 // ─── Entities ─────────────────────────────────────────────────────────────────
 
 export interface Workflow {
@@ -52,6 +58,8 @@ export interface Task {
   compressed: boolean; // true = full content discarded, summary only
   session_id: string | null;
   from_plan: boolean;
+  agent_id: string | null;
+  developer_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -68,6 +76,8 @@ export interface Blocker {
   opened_at: string;
   resolved_at: string | null;
   resolution_minutes: number | null; // computed on resolve
+  agent_id: string | null;
+  developer_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -82,10 +92,21 @@ export interface Decision {
   context: string | null;
   decision: string;
   rationale: string | null;
-  alternatives_considered: string | null;
+  alternatives_considered: Array<{ option: string; rejected_because: string }> | null;
+  alternatives_considered_legacy: string | null; // old TEXT column
   trade_offs: string | null;
   tags: string | null;
+  forcing_constraint: string | null;
+  unlocks: string | null;
+  constrains: string | null;
+  revisit_if: string | null;
+  blocker_id: string | null;
+  files_affected: string[] | null;
+  reversibility: Reversibility;
+  confidence: Confidence;
   compressed: boolean; // true = rationale/alternatives discarded, summary only
+  agent_id: string | null;
+  developer_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -107,6 +128,8 @@ export interface Session {
   started_at: string | null;
   ended_at: string | null;
   exit_reason: string | null;
+  developer_id: string | null;
+  agent_id: string | null;
   created_at: string;
 }
 
@@ -126,6 +149,7 @@ export interface ToolEvent {
   post_timestamp: string | null;
   execution_ms: number | null;
   gap_after_ms: number | null;
+  agent_id: string | null;
   created_at: string;
 }
 
@@ -173,6 +197,64 @@ export interface CompactionEvent {
   workflow_id: string | null;
   trigger: string | null;
   created_at: string;
+}
+
+export interface Developer {
+  id: string;
+  name: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  session_count: number;
+  preferences: Record<string, unknown> | null;
+}
+
+export interface Agent {
+  id: string;
+  session_id: string;
+  developer_id: string | null;
+  parent_agent_id: string | null;
+  agent_type: AgentType;
+  model: string | null;
+  spawned_at: string;
+  ended_at: string | null;
+  tool_call_count: number;
+  task_count: number;
+  decision_count: number;
+  files_written: string[];
+  files_read: string[];
+  created_at: string;
+}
+
+export interface FileArea {
+  id: string;
+  workflow_id: string;
+  path_pattern: string;
+  responsibility: string | null;
+  depends_on: string[];
+  depended_on_by: string[];
+  last_indexed_at: string | null;
+  indexed_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ActivityEvent {
+  id: string;
+  developer_id: string | null;
+  agent_id: string | null;
+  session_id: string | null;
+  workflow_id: string | null;
+  event_type: string;
+  subject_type: string | null;
+  subject_id: string | null;
+  subject_title: string | null;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface DeveloperIdentity {
+  id: string;
+  name: string;
 }
 
 // ─── Compound types ───────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 {
   "name": "occom-claude-project-history",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Invisible project intelligence for Claude Code. Tracks workflows, tasks, blockers, and decisions locally with PGlite.",
   "license": "MIT",
   "repository": {

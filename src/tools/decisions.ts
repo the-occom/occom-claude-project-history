@@ -2,8 +2,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getDb, newId, findOne } from "../db.js";
 import type { Decision } from "../types.js";
+import { emitActivity } from "../activity.js";
+import { getSessionAgent, getSessionDeveloper } from "../session-state.js";
 
-export function registerDecisionTools(server: McpServer): void {
+export function registerDecisionTools(server: McpServer, sessionId?: string): void {
 
   server.registerTool(
     "cph_decision_record",
@@ -27,36 +29,84 @@ Args:
   - workflow_id, title, decision: Required
   - context: What problem were you solving? What constraints existed?
   - rationale: Why this option over the alternatives?
-  - alternatives_considered: What else did you evaluate?
+  - alternatives_considered: Structured list of options evaluated and why rejected
   - trade_offs: What does this choice cost or foreclose?
-  - tags: Comma-separated (e.g. "auth,database,performance")`,
+  - tags: Comma-separated (e.g. "auth,database,performance") or array
+  - reversibility: How hard is it to undo? (reversible | costly | irreversible)
+  - confidence: How confident are you? (low | medium | high)
+  - files_affected: Which files does this decision impact?
+  - forcing_constraint: What external force required this decision now?
+  - revisit_if: Under what conditions should this be revisited?`,
       inputSchema: {
         workflow_id: z.string().uuid(),
         title: z.string().min(1).max(300),
         decision: z.string().min(1).max(5000).describe("The actual choice made"),
         context: z.string().max(5000).optional(),
         rationale: z.string().max(5000).optional(),
-        alternatives_considered: z.string().max(5000).optional(),
+        alternatives_considered: z.array(z.object({
+          option: z.string(),
+          rejected_because: z.string()
+        })).optional().describe("Structured alternatives: [{option, rejected_because}]"),
         trade_offs: z.string().max(3000).optional(),
         task_id: z.string().uuid().optional(),
-        tags: z.string().max(500).optional().describe("Comma-separated tags")
+        tags: z.union([
+          z.string().max(500),
+          z.array(z.string())
+        ]).optional().describe("Comma-separated tags or array"),
+        forcing_constraint: z.string().max(2000).optional().describe("What external force required this decision now?"),
+        unlocks: z.string().max(2000).optional().describe("What does this decision enable?"),
+        constrains: z.string().max(2000).optional().describe("What does this decision prevent or limit?"),
+        revisit_if: z.string().max(2000).optional().describe("Under what conditions should this be revisited?"),
+        blocker_id: z.string().uuid().optional().describe("Blocker this decision resolves"),
+        files_affected: z.array(z.string()).optional().describe("File paths affected by this decision"),
+        reversibility: z.enum(["reversible", "costly", "irreversible"]).optional().describe("How hard to undo?"),
+        confidence: z.enum(["low", "medium", "high"]).optional().describe("Decision confidence level")
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
     },
-    async ({ workflow_id, title, decision, context, rationale, alternatives_considered, trade_offs, task_id, tags }) => {
+    async ({ workflow_id, title, decision, context, rationale, alternatives_considered, trade_offs, task_id, tags, forcing_constraint, unlocks, constrains, revisit_if, blocker_id, files_affected, reversibility, confidence }) => {
       try {
         const db = await getDb();
         const id = newId();
 
+        // Normalize tags: array → comma-separated string
+        const tagsStr = Array.isArray(tags) ? tags.join(",") : (tags ?? null);
+
         await db.query(
           `INSERT INTO decisions
-             (id, workflow_id, task_id, title, context, decision, rationale, alternatives_considered, trade_offs, tags)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [id, workflow_id, task_id ?? null, title, context ?? null, decision,
-            rationale ?? null, alternatives_considered ?? null, trade_offs ?? null, tags ?? null]
+             (id, workflow_id, task_id, title, context, decision, rationale,
+              alternatives_considered, trade_offs, tags,
+              forcing_constraint, unlocks, constrains, revisit_if,
+              blocker_id, files_affected, reversibility, confidence)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+          [
+            id, workflow_id, task_id ?? null, title, context ?? null, decision,
+            rationale ?? null,
+            alternatives_considered ? JSON.stringify(alternatives_considered) : null,
+            trade_offs ?? null, tagsStr,
+            forcing_constraint ?? null, unlocks ?? null, constrains ?? null, revisit_if ?? null,
+            blocker_id ?? null,
+            files_affected ? JSON.stringify(files_affected) : null,
+            reversibility ?? "reversible",
+            confidence ?? "medium",
+          ]
         );
 
         const dec = await findOne<Decision>(db, `SELECT * FROM decisions WHERE id = $1`, [id]);
+
+        // Emit activity
+        const sid = sessionId ?? null;
+        await emitActivity({
+          developer_id: sid ? getSessionDeveloper(sid) : null,
+          agent_id: sid ? getSessionAgent(sid) : null,
+          session_id: sid,
+          workflow_id,
+          event_type: "decision_recorded",
+          subject_type: "decision",
+          subject_id: id,
+          subject_title: title,
+        }, db).catch(() => {});
+
         return { content: [{ type: "text", text: JSON.stringify(dec, null, 2) }] };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);

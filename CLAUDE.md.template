@@ -14,3 +14,28 @@ Do NOT skip this sequence. Just sync and retry.
 ## Notification Handling
 When you receive a notification from CPH, call cph_context_sync immediately.
 Empty syncs are cheap (~0 tokens, no DB queries) and safe to call frequently.
+
+## Identity
+Your developer identity is auto-detected from `git config user.email`.
+CPH tracks which developer is working on what and surfaces this in cph_session_init.
+No configuration needed — it just works.
+
+## Team Awareness
+Use `cph_who_is_working` to see who else is active on the same workflow.
+The `cph_activity_stream` shows recent events (tasks started/completed, decisions, blockers).
+The context injection hook automatically shows teammates in every prompt when others are active.
+
+## Enriched Decisions
+When recording decisions with `cph_decision_record`, always include:
+- `alternatives_considered`: Array of `{option, rejected_because}` — what else you evaluated
+- `revisit_if`: Conditions under which this decision should be reconsidered
+- `files_affected`: Which files this decision impacts
+- `reversibility`: How hard is it to undo? (reversible | costly | irreversible)
+- `confidence`: How confident are you? (low | medium | high)
+
+## Codebase Index
+Use `cph_codebase_index` during plan mode to declare file area ownership:
+- Which paths belong to this workflow
+- What each area is responsible for
+- Dependencies between areas
+This helps future sessions understand the project structure.

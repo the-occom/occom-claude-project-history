@@ -2,8 +2,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getDb, newId, findOne, PRIORITY_ORDER, withTransaction, ConflictError } from "../db.js";
 import type { Task } from "../types.js";
+import { emitActivity } from "../activity.js";
+import { getSessionAgent, getSessionDeveloper } from "../session-state.js";
 
-export function registerTaskTools(server: McpServer): void {
+export function registerTaskTools(server: McpServer, sessionId?: string): void {
 
   server.registerTool(
     "cph_task_create",
@@ -47,6 +49,16 @@ Returns: Created task. Call cph_task_start immediately after.`,
           [id, workflow_id, parent_task_id ?? null, title, description ?? null, priority, estimated_minutes ?? null]
         );
         const task = await findOne<Task>(db, `SELECT * FROM tasks WHERE id = $1`, [id]);
+
+        const sid = sessionId ?? null;
+        await emitActivity({
+          developer_id: sid ? getSessionDeveloper(sid) : null,
+          agent_id: sid ? getSessionAgent(sid) : null,
+          session_id: sid, workflow_id,
+          event_type: "task_created",
+          subject_type: "task", subject_id: id, subject_title: title,
+        }, db).catch(() => {});
+
         return { content: [{ type: "text", text: JSON.stringify(task, null, 2) }] };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -90,6 +102,16 @@ State machine: pending → in_progress (only valid transition from this tool)`,
         });
         const db = await getDb();
         const updated = await findOne<Task>(db, `SELECT * FROM tasks WHERE id = $1`, [task_id]);
+
+        const sid = sessionId ?? null;
+        await emitActivity({
+          developer_id: sid ? getSessionDeveloper(sid) : null,
+          agent_id: sid ? getSessionAgent(sid) : null,
+          session_id: sid, workflow_id: updated?.workflow_id ?? null,
+          event_type: "task_started",
+          subject_type: "task", subject_id: task_id, subject_title: updated?.title ?? null,
+        }, db).catch(() => {});
+
         return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
       } catch (err: unknown) {
         if (err instanceof ConflictError) {
@@ -155,6 +177,16 @@ Args:
         });
         const db = await getDb();
         const updated = await findOne<Task>(db, `SELECT * FROM tasks WHERE id = $1`, [task_id]);
+
+        const sid = sessionId ?? null;
+        await emitActivity({
+          developer_id: sid ? getSessionDeveloper(sid) : null,
+          agent_id: sid ? getSessionAgent(sid) : null,
+          session_id: sid, workflow_id: updated?.workflow_id ?? null,
+          event_type: "task_completed",
+          subject_type: "task", subject_id: task_id, subject_title: updated?.title ?? null,
+        }, db).catch(() => {});
+
         return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
       } catch (err: unknown) {
         if (err instanceof ConflictError) {
@@ -365,6 +397,17 @@ Args:
         });
         const db = await getDb();
         const updated = await findOne<Task>(db, `SELECT * FROM tasks WHERE id = $1`, [task_id]);
+
+        const sid = sessionId ?? null;
+        await emitActivity({
+          developer_id: sid ? getSessionDeveloper(sid) : null,
+          agent_id: sid ? getSessionAgent(sid) : null,
+          session_id: sid, workflow_id: updated?.workflow_id ?? null,
+          event_type: "task_completed",
+          subject_type: "task", subject_id: task_id, subject_title: updated?.title ?? null,
+          detail: { cancelled: true },
+        }, db).catch(() => {});
+
         return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
       } catch (err: unknown) {
         if (err instanceof ConflictError) {

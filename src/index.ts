@@ -13,6 +13,9 @@ import { registerTaskTools } from "./tools/tasks.js";
 import { registerBlockerTools } from "./tools/blockers.js";
 import { registerDecisionTools } from "./tools/decisions.js";
 import { registerThinkingTools } from "./tools/thinking.js";
+import { registerCoordinationTools } from "./tools/coordination.js";
+import { registerReconstructTools } from "./tools/reconstruct.js";
+import { registerCodebaseTools } from "./tools/codebase.js";
 import {
   onUserPrompt, onPreToolUse, onPostToolUse,
   onPostToolUseFailure, sealTurnThinking,
@@ -22,21 +25,27 @@ import type { PGlite } from "@electric-sql/pglite";
 import { bus } from "./services/notify.js";
 import { unregisterSession } from "./services/context.js";
 import { createDebugRouter } from "./debug/router.js";
+import { resolveIdentity, upsertDeveloper } from "./identity.js";
+import { emitActivity, pruneActivityStream } from "./activity.js";
+import { setSessionAgent, getSessionAgent, setSessionDeveloper, getSessionDeveloper } from "./session-state.js";
 
-const PKG_VERSION = "0.5.0";
+const PKG_VERSION = "0.6.0";
 
 function createServer(sessionId: string = "stdio"): McpServer {
   const server = new McpServer({
     name: "occom-claude-project-history",
-    version: "0.5.0"
+    version: "0.6.0"
   });
 
   registerSessionTools(server, sessionId);
   registerWorkflowTools(server);
-  registerTaskTools(server);
-  registerBlockerTools(server);
-  registerDecisionTools(server);
+  registerTaskTools(server, sessionId);
+  registerBlockerTools(server, sessionId);
+  registerDecisionTools(server, sessionId);
   registerThinkingTools(server);
+  registerCoordinationTools(server);
+  registerReconstructTools(server);
+  registerCodebaseTools(server, sessionId);
 
   return server;
 }
@@ -61,6 +70,7 @@ async function main(): Promise<void> {
 
   const db = await getDb();
   await bus.start(db);
+  pruneActivityStream(db).catch(() => {});
 
   if (mode === "--serve") {
     const app = express();
@@ -214,6 +224,44 @@ async function main(): Promise<void> {
           lines.push("Call cph_session_init for full context.");
         }
 
+        // Team awareness: show other active agents on same workflow
+        if (sid && wid) {
+          try {
+            const selfAgent = await db.query<{ agent_id: string | null }>(
+              `SELECT agent_id FROM sessions WHERE id = $1`, [sid]
+            );
+            const selfAgentId = selfAgent.rows[0]?.agent_id;
+            const teamResult = await db.query<{ developer_name: string; task_title: string | null; blocker_title: string | null }>(
+              `SELECT d.name AS developer_name,
+                      t.title AS task_title,
+                      b.title AS blocker_title
+               FROM sessions s
+               JOIN developers d ON d.id = s.developer_id
+               LEFT JOIN LATERAL (
+                 SELECT title FROM tasks WHERE workflow_id = s.workflow_id AND status = 'in_progress'
+                 ORDER BY updated_at DESC LIMIT 1
+               ) t ON true
+               LEFT JOIN LATERAL (
+                 SELECT title FROM blockers WHERE workflow_id = s.workflow_id AND status = 'open'
+                 ORDER BY opened_at DESC LIMIT 1
+               ) b ON true
+               WHERE s.workflow_id = $1
+                 AND s.ended_at IS NULL
+                 AND ($2::text IS NULL OR s.agent_id != $2)
+                 AND s.id != $3`,
+              [wid, selfAgentId ?? null, sid]
+            );
+            if (teamResult.rows.length > 0) {
+              const teamParts = teamResult.rows.map(r => {
+                if (r.blocker_title) return `${r.developer_name} → blocked: ${r.blocker_title}`;
+                if (r.task_title) return `${r.developer_name} → ${r.task_title}`;
+                return `${r.developer_name} → available`;
+              });
+              lines.push(`Team: ${teamParts.join(" | ")}`);
+            }
+          } catch {}
+        }
+
         res.type("text/plain").send(lines.join("\n"));
       } catch {
         res.type("text/plain").send("");
@@ -357,7 +405,7 @@ async function routeEvent(
 
   switch (event) {
 
-    case "SessionStart":
+    case "SessionStart": {
       await db.query(
         `INSERT INTO sessions (id, workflow_id, model, agent_type, source, started_at)
          VALUES ($1,$2,$3,$4,$5,$6)
@@ -370,7 +418,40 @@ async function routeEvent(
           [timestamp, workflowId]
         );
       }
+
+      // Identity + agent tracking
+      const cwd = (data.cwd as string | undefined) ?? process.cwd();
+      const identity = resolveIdentity(cwd);
+      await upsertDeveloper(identity, db);
+
+      const agentId = newId();
+      await db.query(
+        `INSERT INTO agents (id, session_id, developer_id, agent_type, model, spawned_at)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [agentId, sessionId, identity.id, "main", (data.model as string) ?? null, timestamp]
+      );
+
+      await db.query(
+        `UPDATE sessions SET developer_id = $1, agent_id = $2 WHERE id = $3`,
+        [identity.id, agentId, sessionId]
+      );
+
+      setSessionAgent(sessionId, agentId);
+      setSessionDeveloper(sessionId, identity.id);
+
+      await emitActivity({
+        developer_id: identity.id,
+        agent_id: agentId,
+        session_id: sessionId,
+        workflow_id: workflowId,
+        event_type: "session_started",
+        subject_type: "session",
+        subject_id: sessionId,
+        subject_title: `Session by ${identity.name}`,
+      }, db).catch(() => {});
+
       break;
+    }
 
     case "SessionEnd":
       await db.query(
@@ -411,15 +492,31 @@ async function routeEvent(
       await sealTurnThinking(sessionId, workflowId, timestamp, db);
       break;
 
-    case "SubagentStart":
+    case "SubagentStart": {
       await db.query(
         `INSERT INTO subagents (id, session_id, workflow_id, agent_type, prompt_len, started_at)
          VALUES ($1,$2,$3,$4,$5,$6)`,
         [data.agent_id, sessionId, workflowId, data.agent_type, data.prompt_len, timestamp]
       );
-      break;
 
-    case "SubagentStop":
+      // Track in agents table
+      const subDevId = getSessionDeveloper(sessionId);
+      const parentAgentId = getSessionAgent(sessionId);
+      const agentTypeMap: Record<string, string> = {
+        Explore: "explore", Plan: "main", Code: "code",
+        Validator: "validator", CI: "ci",
+      };
+      const mappedType = agentTypeMap[data.agent_type as string] ?? "external";
+      await db.query(
+        `INSERT INTO agents (id, session_id, developer_id, parent_agent_id, agent_type, spawned_at)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (id) DO NOTHING`,
+        [data.agent_id, sessionId, subDevId, parentAgentId, mappedType, timestamp]
+      );
+      break;
+    }
+
+    case "SubagentStop": {
       await db.query(
         `UPDATE subagents
          SET ended_at = $1,
@@ -433,7 +530,20 @@ async function routeEvent(
          JSON.stringify(data.files_deleted),
          data.agent_id]
       );
+
+      // Update agents table with stats
+      const filesWritten = Array.isArray(data.files_created) ? data.files_created : [];
+      const filesRead: string[] = [];
+      await db.query(
+        `UPDATE agents
+         SET ended_at = $1,
+             files_written = $2,
+             files_read = $3
+         WHERE id = $4`,
+        [timestamp, JSON.stringify(filesWritten), JSON.stringify(filesRead), data.agent_id]
+      );
       break;
+    }
 
     case "PreCompact":
       await db.query(

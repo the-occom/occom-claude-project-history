@@ -34,12 +34,17 @@ async function compressDecisions(db: PGlite): Promise<number> {
     `WITH compressed AS (
        UPDATE decisions
        SET
-         rationale               = NULL,
-         alternatives_considered = NULL,
-         trade_offs              = NULL,
-         context                 = SUBSTRING(context FROM 1 FOR 200),
-         compressed              = TRUE,
-         updated_at              = NOW()
+         rationale                    = NULL,
+         alternatives_considered      = NULL,
+         alternatives_considered_legacy = NULL,
+         trade_offs                   = NULL,
+         forcing_constraint           = NULL,
+         unlocks                      = NULL,
+         constrains                   = NULL,
+         revisit_if                   = NULL,
+         context                      = SUBSTRING(context FROM 1 FOR 200),
+         compressed                   = TRUE,
+         updated_at                   = NOW()
        WHERE
          compressed = FALSE
          AND created_at < NOW() - INTERVAL '30 days'

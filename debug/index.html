@@ -648,6 +648,12 @@
       </div>
     </div>
     <div class="nav-section">
+      <div class="nav-label">team</div>
+      <div class="nav-item" onclick="setPanel('team')" data-panel="team">
+        team <span class="nav-count" id="nc-team">—</span>
+      </div>
+    </div>
+    <div class="nav-section">
       <div class="nav-label">telemetry</div>
       <div class="nav-item" onclick="setPanel('sessions')" data-panel="sessions">
         sessions <span class="nav-count" id="nc-sessions">—</span>
@@ -801,6 +807,25 @@
       </div>
     </div>
 
+    <!-- TEAM -->
+    <div class="panel" id="panel-team">
+      <div class="panel-header">
+        <div class="panel-title">team <span>developers, agents & activity</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div>
+          <div style="color:var(--muted);font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">developers</div>
+          <div id="team-developers"></div>
+        </div>
+        <div>
+          <div style="color:var(--muted);font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">active agents</div>
+          <div id="team-agents"></div>
+        </div>
+      </div>
+      <div style="color:var(--muted);font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">activity feed (last 50)</div>
+      <div id="team-activity" class="table-wrap scrollable"></div>
+    </div>
+
     <!-- SQL QUERY -->
     <div class="panel" id="panel-query">
       <div class="panel-header">
@@ -815,7 +840,7 @@
         <div id="query-result" class="query-result" style="display:none"></div>
       </div>
       <div style="color:var(--muted);font-size:11px;line-height:2">
-        <div>tables: <span style="color:var(--text)">workflows, tasks, blockers, decisions, sessions, tool_events, subagents, compaction_events, engineer_preferences, thinking_estimates, tool_baselines</span></div>
+        <div>tables: <span style="color:var(--text)">workflows, tasks, blockers, decisions, sessions, tool_events, subagents, compaction_events, engineer_preferences, thinking_estimates, tool_baselines, developers, agents, file_areas, activity_stream</span></div>
         <div style="margin-top:4px;color:var(--dim)">read-only — SELECT only, mutations blocked</div>
       </div>
     </div>
@@ -826,7 +851,7 @@
 <script>
 // ── config ──────────────────────────────────────────────────────────────────
 const API = `http://localhost:3742/api`;
-let DB = { workflows: [], tasks: [], blockers: [], decisions: [], events: [], sessions: [], tool_events: [], thinking_estimates: [], tool_baselines: [] };
+let DB = { workflows: [], tasks: [], blockers: [], decisions: [], events: [], sessions: [], tool_events: [], thinking_estimates: [], tool_baselines: [], developers: [], agents: [], activity_stream: [] };
 let AUTO_REFRESH;
 
 // ── init ─────────────────────────────────────────────────────────────────────
@@ -884,7 +909,7 @@ async function fetchJSON(url) {
 // ── panel routing ─────────────────────────────────────────────────────────────
 let currentPanel = 'overview';
 let currentTaskId = null;
-const VALID_PANELS = ['overview','workflows','tasks','blockers','decisions','sessions','timeline','events','thinking','insights','query','task-detail'];
+const VALID_PANELS = ['overview','workflows','tasks','blockers','decisions','team','sessions','timeline','events','thinking','insights','query','task-detail'];
 
 function setPanel(name, pushState) {
   if (pushState === undefined) pushState = true;
@@ -914,7 +939,8 @@ function renderCurrentPanel() {
   const renders = {
     overview: renderOverview, workflows: renderWorkflows,
     tasks: renderTasks, blockers: renderBlockers,
-    decisions: renderDecisions, sessions: renderSessions,
+    decisions: renderDecisions, team: renderTeam,
+    sessions: renderSessions,
     timeline: renderTimeline, events: renderEvents,
     thinking: renderThinking, insights: renderInsights,
     'task-detail': renderTaskDetail,
@@ -945,6 +971,7 @@ function updateCounts() {
   set('nc-sessions',  DB.sessions.length);
   set('nc-timeline',  DB.tool_events.length);
   set('nc-thinking',  (DB.thinking_estimates || []).length);
+  set('nc-team',      (DB.developers || []).length);
 
   // populate workflow filter
   const sel = document.getElementById('task-filter-wf');
@@ -1554,6 +1581,61 @@ function renderInsights() {
       ${openRows}
     </div>
   `;
+}
+
+// ── team ──────────────────────────────────────────────────────────────────────
+function renderTeam() {
+  const devs = DB.developers || [];
+  const agents = DB.agents || [];
+  const activity = DB.activity_stream || [];
+
+  // Developers
+  if (!devs.length) {
+    document.getElementById('team-developers').innerHTML = emptyState('no developers yet');
+  } else {
+    document.getElementById('team-developers').innerHTML = `
+      <div class="table-wrap"><table>
+        <tr><th>name</th><th>id</th><th>sessions</th><th>last seen</th></tr>
+        ${devs.map(d => `<tr>
+          <td style="color:var(--text)">${esc(d.name)}</td>
+          <td style="color:var(--muted);font-size:10px">${esc(d.id)}</td>
+          <td>${d.session_count}</td>
+          <td>${timeAgo(d.last_seen_at)}</td>
+        </tr>`).join('')}
+      </table></div>`;
+  }
+
+  // Active agents
+  const activeAgents = agents.filter(a => !a.ended_at);
+  if (!activeAgents.length) {
+    document.getElementById('team-agents').innerHTML = emptyState('no active agents');
+  } else {
+    document.getElementById('team-agents').innerHTML = `
+      <div class="table-wrap"><table>
+        <tr><th>type</th><th>model</th><th>spawned</th><th>id</th></tr>
+        ${activeAgents.map(a => `<tr>
+          <td><span class="status-pill ${a.agent_type === 'main' ? 'ok' : ''}">${esc(a.agent_type)}</span></td>
+          <td style="color:var(--muted)">${esc(a.model || '—')}</td>
+          <td>${timeAgo(a.spawned_at)}</td>
+          <td style="color:var(--dim);font-size:10px">${esc(a.id?.slice(0,8) || '')}</td>
+        </tr>`).join('')}
+      </table></div>`;
+  }
+
+  // Activity stream
+  if (!activity.length) {
+    document.getElementById('team-activity').innerHTML = emptyState('no activity yet');
+  } else {
+    const recent = activity.slice(0, 50);
+    document.getElementById('team-activity').innerHTML = `<table>
+      <tr><th>time</th><th>event</th><th>subject</th></tr>
+      ${recent.map(a => `<tr>
+        <td style="color:var(--dim)">${timeAgo(a.created_at)}</td>
+        <td><span class="status-pill">${esc(a.event_type)}</span></td>
+        <td style="color:var(--text)">${esc(a.subject_title || a.subject_id || '—')}</td>
+      </tr>`).join('')}
+    </table>`;
+  }
 }
 
 // ── sql query ─────────────────────────────────────────────────────────────────
